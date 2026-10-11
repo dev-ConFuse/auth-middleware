@@ -3,23 +3,18 @@ import path from 'path';
 import fs from 'fs';
 import { AsyncLocalStorage } from 'async_hooks';
 
-// Check if we're in a serverless environment (read-only file system)
-const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTION_NAME;
-
-// Ensure logs directory exists (only in non-serverless environments)
+// Ensure logs directory exists (file logging is disabled if the FS is read-only)
 const logDir = 'logs';
 let fileLoggingEnabled = false;
 
-if (!isServerless) {
-    try {
-        if (!fs.existsSync(logDir)) {
-            fs.mkdirSync(logDir);
-        }
-        fileLoggingEnabled = true;
-    } catch (error) {
-        // If we can't create the logs directory, disable file logging
-        console.warn('Cannot create logs directory, file logging disabled');
+try {
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir);
     }
+    fileLoggingEnabled = true;
+} catch (error) {
+    // If we can't create the logs directory, disable file logging
+    console.warn('Cannot create logs directory, file logging disabled');
 }
 
 // Async local storage for correlation ID

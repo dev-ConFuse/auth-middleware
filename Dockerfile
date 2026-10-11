@@ -62,7 +62,7 @@ RUN mkdir -p keys && chown node:node keys
 # Set environment
 ENV NODE_ENV=production
 
-# Health check optimized for Render
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 

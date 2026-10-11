@@ -1,12 +1,23 @@
-# Node Service .dockerignore
-# Ignore cache and temp files
-node_modules/
-dist/
+# ConFuse .dockerignore — secrets and local state never enter the image.
+# (env files are supplied at runtime: .map.env → AKS ConfigMap, .secret.env → Secret)
+.map.env
+.secret.env
+.env.local
 .env
 .env.*
-coverage/
-.git/
+*.env
+.git
 .gitignore
-README.md
-Dockerfile*
-.dockerignore
+node_modules
+target
+dist
+build
+.next
+logs
+*.log
+__pycache__
+.pytest_cache
+.ruff_cache
+.venv
+venv
+artifacts

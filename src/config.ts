@@ -72,9 +72,29 @@ function requireEnv(name: string): string {
     return value;
 }
 
+/** First present env var of the given names (all env — no literal fallback). */
+function requireEnvAny(names: string[]): string {
+    for (const name of names) {
+        const value = process.env[name];
+        if (value) {
+            return value;
+        }
+    }
+    throw new Error(`Missing required environment variable (one of): ${names.join(', ')}`);
+}
+
+/** Parse an already-required env value as an integer. */
+function parseIntEnv(names: string[], value: string): number {
+    const parsed = parseInt(value, 10);
+    if (Number.isNaN(parsed)) {
+        throw new Error(`Invalid integer for environment variable: ${names.join(' | ')}`);
+    }
+    return parsed;
+}
+
 export const config: Config = {
-    // Server
-    port: parseInt(process.env.PORT || process.env.AUTH_MIDDLEWARE_PORT || '3010', 10),
+    // Server (env-only — see .cline/rules/env-policy.md)
+    port: parseIntEnv(['PORT', 'AUTH_MIDDLEWARE_PORT'], requireEnvAny(['PORT', 'AUTH_MIDDLEWARE_PORT'])),
     nodeEnv: requireEnv('NODE_ENV'),
 
     // Auth0 (required — OAuth via Google or Microsoft)
@@ -82,7 +102,7 @@ export const config: Config = {
         domain: requireEnv('AUTH0_DOMAIN'),
         issuer: requireEnv('AUTH0_ISSUER'),
         audience: requireEnv('AUTH0_AUDIENCE'),
-        jwksUri: process.env.AUTH0_JWKS_URI || `https://${requireEnv('AUTH0_DOMAIN')}/.well-known/jwks.json`,
+        jwksUri: requireEnv('AUTH0_JWKS_URI'),
         clientId: process.env.AUTH0_CLIENT_ID,
         clientSecret: process.env.AUTH0_CLIENT_SECRET,
         managementDomain: process.env.AUTH0_MANAGEMENT_DOMAIN || process.env.AUTH0_DOMAIN,
@@ -111,15 +131,15 @@ export const config: Config = {
 
     redisUrl: requireEnv('REDIS_URL'),
 
-    // FalkorDB configuration
-    falkordbHost: process.env.FALKORDB_HOST || 'r-6jissuruar.instance-ivah2xvml.hc-7up0crkyn.ap-south-1.aws.f2e0a955bb84.cloud',
-    falkordbPort: parseInt(process.env.FALKORDB_PORT || '50860', 10),
-    falkordbUsername: process.env.FALKORDB_USERNAME || 'adminconfuse',
-    falkordbPassword: process.env.FALKORDB_PASSWORD || 'graph4confuse',
-    // Must match embeddings-service output (384-d) and the processors'
+    // FalkorDB configuration (required — no hard-coded hosts/credentials)
+    falkordbHost: requireEnv('FALKORDB_HOST'),
+    falkordbPort: parseIntEnv(['FALKORDB_PORT'], requireEnv('FALKORDB_PORT')),
+    falkordbUsername: requireEnv('FALKORDB_USERNAME'),
+    falkordbPassword: requireEnv('FALKORDB_PASSWORD'),
+    // Must match embeddings-service output and the processors'
     // create_vector_index dimension; override via EMBEDDING_DIMENSION only
     // when the whole pipeline is re-dimensioned together.
-    embeddingDimension: parseInt(process.env.EMBEDDING_DIMENSION || '384', 10),
+    embeddingDimension: parseIntEnv(['EMBEDDING_DIMENSION'], requireEnv('EMBEDDING_DIMENSION')),
 
     // Direct OAuth provider configs
     github: {

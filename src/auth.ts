@@ -1202,7 +1202,7 @@ authRouter.post('/oauth/exchange', requireAuth, async (req: AuthenticatedRequest
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/x-www-form-urlencoded',
-                    'Origin': config.corsOrigins[0] || 'http://localhost:3000'
+                    'Origin': config.frontendUrl
                 },
                 body: bodyParams.toString(),
             });

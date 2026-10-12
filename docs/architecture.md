@@ -49,14 +49,12 @@
 │                                    ▼                                      │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
 │  │                          Data Layer                                  │ │
-│  ├────────────────────────┬────────────────────────────────────────────┤ │
-│  │      PostgreSQL        │              Redis                          │ │
-│  │                        │                                             │ │
-│  │  • users               │  • sessions                                 │ │
-│  │  • api_keys            │  • rate_limits                              │ │
-│  │  • oauth_tokens        │  • token_blacklist                          │ │
-│  │  • audit_logs          │                                             │ │
-│  └────────────────────────┴────────────────────────────────────────────┘ │
+│  ├─────────────────────────────────────────────────────────────────────┤ │
+│  │      PostgreSQL                                                       │ │
+│  │                                                                       │ │
+│  │  • users  • api_keys  • sessions  • oauth_tokens  • audit_logs        │ │
+│  │  (token cache, rate limits and OAuth state are in-memory per process) │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
 │                                                                           │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -66,37 +64,37 @@
 ### 1. Email/Password Login
 
 ```
-┌──────────┐     ┌──────────────────┐     ┌───────────┐     ┌───────┐
-│  Client  │     │  Auth-Middleware │     │ PostgreSQL│     │ Redis │
-└────┬─────┘     └────────┬─────────┘     └─────┬─────┘     └───┬───┘
-     │                    │                     │               │
-     │ POST /auth/login   │                     │               │
-     │ {email, password}  │                     │               │
-     │───────────────────>│                     │               │
-     │                    │                     │               │
-     │                    │ SELECT user WHERE   │               │
-     │                    │ email = ?           │               │
-     │                    │────────────────────>│               │
-     │                    │                     │               │
-     │                    │     User record     │               │
-     │                    │<────────────────────│               │
-     │                    │                     │               │
-     │                    │ bcrypt.compare      │               │
-     │                    │ (password, hash)    │               │
-     │                    │                     │               │
-     │                    │ Generate JWT        │               │
-     │                    │ (access + refresh)  │               │
-     │                    │                     │               │
-     │                    │ Store session       │               │
-     │                    │─────────────────────────────────────>│
-     │                    │                     │               │
-     │                    │ Log auth event      │               │
-     │                    │────────────────────>│               │
-     │                    │                     │               │
-     │ {accessToken,      │                     │               │
-     │  refreshToken,     │                     │               │
-     │  user}             │                     │               │
-     │<───────────────────│                     │               │
+┌──────────┐     ┌──────────────────┐     ┌───────────┐
+│  Client  │     │  Auth-Middleware │     │ PostgreSQL│
+└────┬─────┘     └────────┬─────────┘     └─────┬─────┘
+     │                    │                     │
+     │ POST /auth/login   │                     │
+     │ {email, password}  │                     │
+     │───────────────────>│                     │
+     │                    │                     │
+     │                    │ SELECT user WHERE   │
+     │                    │ email = ?           │
+     │                    │────────────────────>│
+     │                    │                     │
+     │                    │     User record     │
+     │                    │<────────────────────│
+     │                    │                     │
+     │                    │ bcrypt.compare      │
+     │                    │ (password, hash)    │
+     │                    │                     │
+     │                    │ Generate JWT        │
+     │                    │ (access + refresh)  │
+     │                    │                     │
+     │                    │ Store session       │
+     │                    │────────────────────>│
+     │                    │                     │
+     │                    │ Log auth event      │
+     │                    │────────────────────>│
+     │                    │                     │
+     │ {accessToken,      │                     │
+     │  refreshToken,     │                     │
+     │  user}             │                     │
+     │<───────────────────│                     │
 ```
 
 ### 2. OAuth2 Flow (GitHub Example)
@@ -154,27 +152,24 @@
 ### 3. Token Verification (By Other Services)
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌───────┐
-│ API-Backend │     │  Auth-Middleware │     │ Redis │
-└──────┬──────┘     └────────┬─────────┘     └───┬───┘
-       │                     │                   │
-       │ GET /auth/verify    │                   │
-       │ Authorization:      │                   │
-       │ Bearer <token>      │                   │
-       │────────────────────>│                   │
-       │                     │                   │
-       │                     │ JWT.verify(token, │
-       │                     │ secret)           │
-       │                     │                   │
-       │                     │ Check blacklist   │
-       │                     │──────────────────>│
-       │                     │                   │
-       │                     │ Not blacklisted   │
-       │                     │<──────────────────│
-       │                     │                   │
-       │ {valid: true,       │                   │
-       │  user: {...}}       │                   │
-       │<────────────────────│                   │
+┌─────────────┐     ┌──────────────────┐
+│ API-Backend │     │  Auth-Middleware │
+└──────┬──────┘     └────────┬─────────┘
+       │                     │
+       │ GET /auth/verify    │
+       │ Authorization:      │
+       │ Bearer <token>      │
+       │────────────────────>│
+       │                     │
+       │                     │ Check token cache
+       │                     │ (in-memory)
+       │                     │
+       │                     │ JWT.verify(token,
+       │                     │ secret)
+       │                     │
+       │ {valid: true,       │
+       │  user: {...}}       │
+       │<────────────────────│
 ```
 
 ### 4. API Key Validation
@@ -278,10 +273,9 @@ const isValid = await bcrypt.compare(password, hash);
 
 ### Token Blacklisting
 
-When a user logs out or a token is revoked:
-- Token ID added to Redis blacklist
-- TTL set to token's remaining expiry
-- All verification checks the blacklist
+Planned but not yet implemented — the `token_blacklist` Postgres table exists
+but no code path reads or writes it yet. When implemented, token verification
+must consult the blacklist before accepting a token.
 
 ### Audit Logging
 

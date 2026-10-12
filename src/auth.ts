@@ -8,7 +8,6 @@
 import { Router, type Request, type Response } from 'express';
 import type { Response as ExpressResponse, NextFunction } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { Redis } from 'ioredis';
 import { randomBytes, createHash } from 'crypto';
 
 import { logger } from './utils/logger.js';
@@ -33,45 +32,13 @@ export interface OAuthState {
 }
 
 export class OAuthStateService {
-    private redis: Redis;
     private readonly PREFIX = 'oauth:state:';
     private readonly TTL = 600; // 10 minutes
+    /**
+     * In-memory state store (per-process): OAuth state must be consumed by the
+     * same instance that created it — fine for single-replica deployments.
+     */
     private readonly memoryStore = new Map<string, OAuthState>();
-    private redisAvailable = false;
-    private fallbackWarningLogged = false;
-
-    constructor() {
-        this.redis = new Redis(config.redisUrl, {
-            keepAlive: 30000,
-            connectTimeout: 30000, // Increased from default to 30s
-            lazyConnect: false,
-            retryStrategy: (times) => {
-                if (times > 10) {
-                    return null; // Stop retrying after 10 attempts
-                }
-                return Math.min(times * 100, 5000); // More aggressive retry
-            }
-        });
-
-        this.redis.on('error', (err: Error) => {
-            this.redisAvailable = false;
-            if (!this.fallbackWarningLogged) {
-                logger.warn('[OAUTH-STATE] Redis unavailable, using in-memory state fallback', { error: err.message });
-                this.fallbackWarningLogged = true;
-            }
-        });
-
-        this.redis.on('connect', () => {
-            this.redisAvailable = true;
-            this.fallbackWarningLogged = false;
-            logger.info('[OAUTH-STATE] Redis connected');
-        });
-
-        this.redis.on('ready', () => {
-            this.redisAvailable = true;
-            this.fallbackWarningLogged = false;
-        });
-    }
 
     private getStateKey(state: string): string {
         return `${this.PREFIX}${state}`;
@@ -88,10 +55,6 @@ export class OAuthStateService {
         }
 
         return value;
-    }
-
-    private isRedisReady(): boolean {
-        return this.redisAvailable && this.redis.status === 'ready';
     }
 
     /**
@@ -113,7 +76,7 @@ export class OAuthStateService {
     }
 
     /**
-     * Store OAuth state in Redis
+     * Store OAuth state
      */
     async storeState(state: string, data: Omit<OAuthState, 'createdAt' | 'expiresAt'>): Promise<void> {
         const stateData: OAuthState = {
@@ -121,48 +84,13 @@ export class OAuthStateService {
             createdAt: Date.now(),
             expiresAt: Date.now() + (this.TTL * 1000)
         };
-
-        const key = this.getStateKey(state);
-
-        if (this.isRedisReady()) {
-            try {
-                await this.redis.setex(key, this.TTL, JSON.stringify(stateData));
-                return;
-            } catch (err) {
-                logger.warn('[OAUTH-STATE] Redis write failed, using in-memory fallback', { error: err instanceof Error ? err.message : String(err) });
-            }
-        }
-
-        this.memoryStore.set(key, stateData);
+        this.memoryStore.set(this.getStateKey(state), stateData);
     }
 
     /**
      * Validate OAuth state
      */
     async validateState(state: string): Promise<OAuthState | null> {
-        const key = this.getStateKey(state);
-
-        if (this.isRedisReady()) {
-            try {
-                const data = await this.redis.get(key);
-                if (!data) {
-                    return this.getMemoryState(state);
-                }
-
-                const stateData = JSON.parse(data) as OAuthState;
-
-                if (Date.now() > stateData.expiresAt) {
-                    await this.redis.del(key);
-                    this.memoryStore.delete(key);
-                    return null;
-                }
-
-                return stateData;
-            } catch (err) {
-                logger.warn('[OAUTH-STATE] Redis read failed, using in-memory fallback', { error: err instanceof Error ? err.message : String(err) });
-            }
-        }
-
         return this.getMemoryState(state);
     }
 
@@ -170,18 +98,7 @@ export class OAuthStateService {
      * Consume OAuth state (delete after use)
      */
     async consumeState(state: string): Promise<void> {
-        const key = this.getStateKey(state);
-
-        if (this.isRedisReady()) {
-            try {
-                await this.redis.del(key);
-                return;
-            } catch (err) {
-                logger.warn('[OAUTH-STATE] Redis delete failed, clearing in-memory fallback state', { error: err instanceof Error ? err.message : String(err) });
-            }
-        }
-
-        this.memoryStore.delete(key);
+        this.memoryStore.delete(this.getStateKey(state));
     }
 }
 

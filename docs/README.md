@@ -92,7 +92,6 @@ npm run dev
 | `PORT` | HTTP server port | `3010` |
 | `GRPC_PORT` | gRPC server port | `50058` |
 | `DATABASE_URL` | PostgreSQL connection | Required |
-| `REDIS_URL` | Redis connection | Required |
 | `TOKEN_CACHE_TTL_SECONDS` | Token cache TTL | `900` |
 | `FEATURE_TOGGLE_SERVICE_URL` | Feature toggle service | `http://localhost:3099` |
 

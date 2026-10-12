@@ -43,7 +43,6 @@ interface Config {
     frontendUrl: string;
     grpcPort: number;
     internalApiKey: string;
-    redisUrl: string;
 
     // FalkorDB configuration
     falkordbHost: string;
@@ -128,8 +127,6 @@ export const config: Config = {
 
     // Internal API Key
     internalApiKey: requireEnv('INTERNAL_API_KEY'),
-
-    redisUrl: requireEnv('REDIS_URL'),
 
     // FalkorDB configuration (required — no hard-coded hosts/credentials)
     falkordbHost: requireEnv('FALKORDB_HOST'),

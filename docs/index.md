@@ -146,7 +146,6 @@ FRONTEND_URL=http://localhost:3000
 #### `.secret.env` (Sensitive)
 ```bash
 POSTGRES_CONNECTION_STRING=postgresql://...
-REDIS_URL=redis://...
 AUTH0_CLIENT_SECRET=...
 AUTH0_MANAGEMENT_API_TOKEN=...
 ```
@@ -157,7 +156,6 @@ AUTH0_MANAGEMENT_API_TOKEN=...
 |---------|-----------------|---------|
 | **Auth0** | External | Identity provider & JWT issuance |
 | **PostgreSQL** | Database | User metadata and session data |
-| **Redis** | Cache | Token validation cache & rate limiting |
 | **Feature-Toggle** | Internal | Dynamic feature flag support |
 
 ## Client Services Integration
@@ -237,11 +235,6 @@ npm run lint
 - Check `AUTH0_DOMAIN` and `AUTH0_ISSUER` configuration
 - Verify `AUTH0_AUDIENCE` matches your API identifier
 - Ensure JWT token is not expired
-
-#### "Redis connection failed"
-- Verify Redis is running on configured port
-- Check `REDIS_URL` in `.secret.env`
-- Ensure Redis credentials are correct
 
 #### "gRPC server not starting"
 - Check `GRPC_PORT` is not in use

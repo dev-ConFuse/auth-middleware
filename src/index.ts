@@ -18,7 +18,7 @@ import { falkordbConnectionsRouter } from './routes/falkordb-connections.js';
 
 import { randomUUID } from 'crypto';
 import { logger, asyncLocalStorage } from './utils/logger.js';
-import { rateLimitMiddleware, initRedis } from './middleware/rate-limiter.js';
+import { rateLimitMiddleware } from './middleware/rate-limiter.js';
 import { securityHeadersMiddleware } from './middleware/security-headers.js';
 import { startGrpcServer } from './infra/grpc.js';
 
@@ -31,14 +31,6 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('[AUTH-MIDDLEWARE] Unhandled Rejection at:', promise, 'reason:', reason);
 });
-
-// Initialize Redis for rate limiting (with error handling)
-try {
-    initRedis();
-    logger.info('[AUTH-MIDDLEWARE] Redis initialized for rate limiting');
-} catch (error) {
-    logger.warn('[AUTH-MIDDLEWARE] Redis initialization failed, rate limiting disabled:', error);
-}
 
 const app = express();
 

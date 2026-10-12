@@ -10,9 +10,6 @@
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/confuse
 
-# Redis (for sessions and rate limiting)
-REDIS_URL=redis://localhost:6379
-
 # JWT Configuration
 JWT_SECRET=your-secret-key-minimum-32-characters
 JWT_ACCESS_EXPIRES_IN=1h

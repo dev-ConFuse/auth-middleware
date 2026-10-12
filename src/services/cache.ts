@@ -1,13 +1,13 @@
 /**
  * ConFuse Auth Middleware - Token Cache Service
- * 
- * Provides Redis-based token caching for distributed authentication
- * with TTL-based expiration and cache-first validation pattern.
+ *
+ * In-memory token caching with TTL-based expiration and cache-first
+ * validation. Per-process only: entries are lost on restart and are not
+ * shared across replicas (fine for single-replica deployments).
  */
 
-import { Redis } from 'ioredis';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { config } from '../config.js';
 
 // Token cache entry structure
 interface CachedToken {
@@ -26,72 +26,48 @@ interface CacheStats {
 }
 
 class TokenCacheService {
-    private redis: Redis | null = null;
     private isInitialized = false;
-    private redisReady = false;
-    private fallbackWarningLogged = false;
     private stats: CacheStats = { hits: 0, misses: 0, errors: 0 };
-    private readonly TOKEN_PREFIX = 'auth:token:';
-    private readonly USER_INDEX_PREFIX = 'auth:user:tokens:';
     private readonly memoryStore = new Map<string, CachedToken>();
+    /** userId → token hashes, so all of a user's tokens can be evicted at once. */
+    private readonly userIndex = new Map<string, Set<string>>();
+
+    constructor() {
+        this.isInitialized = true;
+        logger.info('[TOKEN-CACHE] In-memory token cache initialized');
+    }
 
     /**
-     * Initialize Redis cache
+     * Kept for API compatibility — nothing external to connect.
      */
     async initialize(): Promise<void> {
-        if (this.isInitialized) return;
-
-        try {
-            this.redis = new Redis(config.redisUrl, {
-                keepAlive: 30000,
-                connectTimeout: 30000, // Increased from default to 30s
-                lazyConnect: false,
-                retryStrategy: (times) => {
-                    if (times > 10) {
-                        return null; // Stop retrying after 10 attempts
-                    }
-                    return Math.min(times * 100, 5000); // More aggressive retry
-                },
-            });
-
-            this.redis.on('error', (err: Error) => {
-                this.redisReady = false;
-                if (!this.fallbackWarningLogged) {
-                    logger.warn('[TOKEN-CACHE] Redis unavailable, using in-memory token cache fallback', { error: err.message });
-                    this.fallbackWarningLogged = true;
-                }
-            });
-
-            this.redis.on('connect', () => {
-                this.redisReady = true;
-                this.fallbackWarningLogged = false;
-                logger.info('[TOKEN-CACHE] Redis connected successfully');
-            });
-
-            this.redis.on('ready', () => {
-                this.redisReady = true;
-                this.fallbackWarningLogged = false;
-            });
-
-            this.isInitialized = true;
-            logger.info('[TOKEN-CACHE] Redis token cache service initialized');
-        } catch (error) {
-            logger.error('[TOKEN-CACHE] Failed to initialize Redis', error);
-        }
+        this.isInitialized = true;
     }
 
     /**
      * Check if cache is available
      */
     isAvailable(): boolean {
-        return this.isInitialized && (this.redisReady && this.redis?.status === 'ready');
+        return this.isInitialized;
+    }
+
+    private invalidateMemory(tokenHash: string): void {
+        const data = this.memoryStore.get(tokenHash);
+        if (data) {
+            const hashes = this.userIndex.get(data.userId);
+            hashes?.delete(tokenHash);
+            if (hashes && hashes.size === 0) {
+                this.userIndex.delete(data.userId);
+            }
+        }
+        this.memoryStore.delete(tokenHash);
     }
 
     private getMemoryToken(tokenHash: string): CachedToken | null {
         const data = this.memoryStore.get(tokenHash);
         if (!data) return null;
         if (data.expiresAt <= Date.now()) {
-            this.memoryStore.delete(tokenHash);
+            this.invalidateMemory(tokenHash);
             return null;
         }
         return data;
@@ -101,45 +77,15 @@ class TokenCacheService {
      * Get cached token data
      */
     async getToken(tokenHash: string): Promise<CachedToken | null> {
-        const memoryToken = this.getMemoryToken(tokenHash);
-        if (memoryToken) {
+        const token = this.getMemoryToken(tokenHash);
+        if (token) {
             this.stats.hits++;
-            return memoryToken;
+            logger.debug(`[TOKEN-CACHE] Cache hit for token hash: ${tokenHash.substring(0, 8)}...`);
+            return token;
         }
-
-        if (!this.isAvailable() || !this.redis) {
-            this.stats.misses++;
-            return null;
-        }
-
-        try {
-            const key = `${this.TOKEN_PREFIX}${tokenHash}`;
-            const dataStr = await this.redis.get(key);
-
-            if (dataStr) {
-                const data = JSON.parse(dataStr) as CachedToken;
-                if (data.expiresAt > Date.now()) {
-                    this.stats.hits++;
-                    logger.debug(`[TOKEN-CACHE] Cache hit for token hash: ${tokenHash.substring(0, 8)}...`);
-
-                    // Refresh TTL (LRU-like behavior)
-                    await this.redis.expire(key, config.tokenCacheTtlSeconds);
-                    this.memoryStore.set(tokenHash, data);
-                    return data;
-                } else {
-                    // Cleanup expired manually just in case, though Redis handles TTL
-                    await this.invalidateToken(tokenHash);
-                }
-            }
-
-            this.stats.misses++;
-            logger.debug(`[TOKEN-CACHE] Cache miss for token hash: ${tokenHash.substring(0, 8)}...`);
-            return null;
-        } catch (error) {
-            this.stats.errors++;
-            logger.warn('[TOKEN-CACHE] Redis cache read failed, using in-memory fallback', { error: error instanceof Error ? error.message : String(error) });
-            return memoryToken;
-        }
+        this.stats.misses++;
+        logger.debug(`[TOKEN-CACHE] Cache miss for token hash: ${tokenHash.substring(0, 8)}...`);
+        return null;
     }
 
     /**
@@ -147,97 +93,39 @@ class TokenCacheService {
      */
     async setToken(tokenHash: string, data: CachedToken): Promise<void> {
         this.memoryStore.set(tokenHash, data);
-
-        if (!this.isAvailable() || !this.redis) {
-            return;
+        let hashes = this.userIndex.get(data.userId);
+        if (!hashes) {
+            hashes = new Set<string>();
+            this.userIndex.set(data.userId, hashes);
         }
-
-        try {
-            const key = `${this.TOKEN_PREFIX}${tokenHash}`;
-            const ttl = config.tokenCacheTtlSeconds;
-
-            const pipeline = this.redis.pipeline();
-            pipeline.setex(key, ttl, JSON.stringify(data));
-
-            // Maintain the userId → keys secondary index
-            const userIndexKey = `${this.USER_INDEX_PREFIX}${data.userId}`;
-            pipeline.sadd(userIndexKey, key);
-            pipeline.expire(userIndexKey, ttl); // ensure index also expires
-
-            await pipeline.exec();
-
-            logger.debug(`[TOKEN-CACHE] Cached token for hash: ${tokenHash.substring(0, 8)}... TTL: ${ttl}s`);
-        } catch (error) {
-            this.stats.errors++;
-            logger.warn('[TOKEN-CACHE] Redis cache write failed, using in-memory fallback', { error: error instanceof Error ? error.message : String(error) });
-        }
+        hashes.add(tokenHash);
+        logger.debug(`[TOKEN-CACHE] Cached token for hash: ${tokenHash.substring(0, 8)}... TTL: ${config.tokenCacheTtlSeconds}s`);
     }
 
     /**
      * Invalidate cached token
      */
     async invalidateToken(tokenHash: string): Promise<void> {
-        this.memoryStore.delete(tokenHash);
-
-        if (!this.isAvailable() || !this.redis) {
-            return;
-        }
-
-        try {
-            const key = `${this.TOKEN_PREFIX}${tokenHash}`;
-
-            // Need to fetch it first to get userId to remove from secondary index
-            const dataStr = await this.redis.get(key);
-            if (dataStr) {
-                const data = JSON.parse(dataStr) as CachedToken;
-                const userIndexKey = `${this.USER_INDEX_PREFIX}${data.userId}`;
-
-                const pipeline = this.redis.pipeline();
-                pipeline.srem(userIndexKey, key);
-                pipeline.del(key);
-                await pipeline.exec();
-            } else {
-                await this.redis.del(key);
-            }
-
-            logger.debug(`[TOKEN-CACHE] Invalidated token hash: ${tokenHash.substring(0, 8)}...`);
-        } catch (error) {
-            this.stats.errors++;
-            logger.warn('[TOKEN-CACHE] Redis cache invalidation failed, using in-memory fallback', { error: error instanceof Error ? error.message : String(error) });
-        }
+        this.invalidateMemory(tokenHash);
+        logger.debug(`[TOKEN-CACHE] Invalidated token hash: ${tokenHash.substring(0, 8)}...`);
     }
 
     /**
      * Invalidate all tokens for a user
      */
     async invalidateUserTokens(userId: string): Promise<number> {
-        if (!this.isAvailable() || !this.redis) {
+        const hashes = this.userIndex.get(userId);
+        if (!hashes || hashes.size === 0) {
+            logger.info(`[TOKEN-CACHE] No tokens found for user: ${userId}`);
             return 0;
         }
-
-        try {
-            const userIndexKey = `${this.USER_INDEX_PREFIX}${userId}`;
-            const keys = await this.redis.smembers(userIndexKey);
-
-            if (!keys || keys.length === 0) {
-                logger.info(`[TOKEN-CACHE] No tokens found for user: ${userId}`);
-                return 0;
-            }
-
-            const pipeline = this.redis.pipeline();
-            for (const key of keys) {
-                pipeline.del(key);
-            }
-            pipeline.del(userIndexKey);
-            await pipeline.exec();
-
-            logger.info(`[TOKEN-CACHE] Invalidated ${keys.length} tokens for user: ${userId}`);
-            return keys.length;
-        } catch (error) {
-            this.stats.errors++;
-            logger.error('[TOKEN-CACHE] Error invalidating user tokens:', error);
-            return 0;
+        const count = hashes.size;
+        for (const hash of [...hashes]) {
+            this.memoryStore.delete(hash);
         }
+        this.userIndex.delete(userId);
+        logger.info(`[TOKEN-CACHE] Invalidated ${count} tokens for user: ${userId}`);
+        return count;
     }
 
     /**
@@ -253,27 +141,19 @@ class TokenCacheService {
      * Health check
      */
     async healthCheck(): Promise<{ status: string; latencyMs: number }> {
-        if (!this.isAvailable() || !this.redis) {
-            return { status: 'not_initialized', latencyMs: -1 };
-        }
-        
-        try {
-            const start = Date.now();
-            await this.redis.ping();
-            return { status: 'healthy', latencyMs: Date.now() - start };
-        } catch (error) {
-            return { status: 'error', latencyMs: -1 };
-        }
+        return {
+            status: this.isAvailable() ? 'healthy' : 'not_initialized',
+            latencyMs: 0,
+        };
     }
 
     /**
-     * Graceful shutdown
+     * Graceful shutdown (kept for API compatibility)
      */
     async shutdown(): Promise<void> {
-        if (this.redis) {
-            await this.redis.quit();
-            logger.info('[TOKEN-CACHE] Redis connection closed gracefully');
-        }
+        this.memoryStore.clear();
+        this.userIndex.clear();
+        logger.info('[TOKEN-CACHE] In-memory token cache cleared');
     }
 }
 

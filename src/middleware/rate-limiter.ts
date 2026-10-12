@@ -1,67 +1,15 @@
 /**
- * ConFuse Auth Middleware - Redis-backed Rate Limiter
+ * ConFuse Auth Middleware - Rate Limiter
  *
- * Sliding-window rate limiting using Redis sorted sets.
- * Falls back to in-memory if Redis is unavailable.
+ * In-memory sliding-window rate limiting. Per-process only: counters are
+ * not shared across replicas and reset on restart (fine for single-replica
+ * deployments).
  */
 
-import { createClient, type RedisClientType } from 'redis';
 import type { Request, Response, NextFunction } from 'express';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
-// ── Redis Client ──
-
-let redisClient: RedisClientType | null = null;
-let redisAvailable = false;
-let fallbackWarningLogged = false;
-let connectedLogged = false;
-
-export async function initRedis(): Promise<void> {
-    try {
-        redisClient = createClient({
-            url: config.redisUrl,
-            socket: {
-                keepAlive: true,
-                reconnectStrategy: (retries) => {
-                    const delay = Math.min(retries * 100, 5000);
-                    if (retries > 10) {
-                        return new Error('Redis reconnection failed after 10 retries');
-                    }
-                    return delay;
-                },
-                connectTimeout: 30000 // Increased from 10s to 30s
-            },
-            database: 0,
-            disableOfflineQueue: false
-        });
-        redisClient.on('error', (err) => {
-            redisAvailable = false;
-            if (!fallbackWarningLogged) {
-                logger.warn(`[RATE-LIMIT] Redis unavailable, using in-memory fallback: ${err.message}`);
-                fallbackWarningLogged = true;
-            }
-        });
-        redisClient.on('connect', () => {
-            redisAvailable = true;
-            fallbackWarningLogged = false;
-            if (!connectedLogged) {
-                logger.info('[RATE-LIMIT] Redis connected');
-                connectedLogged = true;
-            }
-        });
-        await redisClient.connect();
-        redisAvailable = true;
-    } catch (err) {
-        redisAvailable = false;
-        if (!fallbackWarningLogged) {
-            logger.warn(`[RATE-LIMIT] Redis unavailable, using in-memory fallback: ${err}`);
-            fallbackWarningLogged = true;
-        }
-    }
-}
-
-// ── In-memory fallback ──
+// ── In-memory store ──
 
 const memoryStore = new Map<string, number[]>();
 
@@ -87,39 +35,15 @@ interface RateLimitResult {
     resetAt: number;
 }
 
-async function checkRateLimit(
+function checkRateLimit(
     key: string,
     maxRequests: number,
     windowMs: number,
-): Promise<RateLimitResult> {
+): RateLimitResult {
     const now = Date.now();
     const windowStart = now - windowMs;
     const resetAt = Math.ceil((now + windowMs) / 1000);
 
-    if (redisAvailable && redisClient) {
-        try {
-            // Use Redis sorted set for sliding window
-            const multi = redisClient.multi();
-            multi.zRemRangeByScore(key, '-inf', windowStart.toString());
-            multi.zAdd(key, { score: now, value: `${now}:${Math.random().toString(36).slice(2, 8)}` });
-            multi.zCard(key);
-            multi.pExpire(key, windowMs);
-            const results = await multi.exec();
-            const count = (results?.[2] as unknown as number) || 0;
-            const allowed = count <= maxRequests;
-            return {
-                allowed,
-                remaining: Math.max(0, maxRequests - count),
-                limit: maxRequests,
-                retryAfterSecs: allowed ? 0 : Math.ceil(windowMs / 1000),
-                resetAt,
-            };
-        } catch {
-            // Fall through to memory
-        }
-    }
-
-    // In-memory fallback
     // DSA: Timestamps are kept sorted (monotonically increasing).
     // Use binary search to find the cutoff point instead of O(n) Array.filter()
     // which allocated a new array on every request.
@@ -202,16 +126,16 @@ function getClientKey(req: Request): string {
 }
 
 export function rateLimitMiddleware() {
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    return (req: Request, res: Response, next: NextFunction): void => {
         const clientKey = getClientKey(req);
         const user = (req as unknown as import('../types/index.js').AuthenticatedRequest).user;
         const userTier = typeof (user as any)?.subscription_tier === 'string' ? (user as any).subscription_tier : 'free';
 
         const tier = getTierForPath(req.path, userTier);
 
-        const redisKey = `ratelimit:auth:${clientKey}:${req.path.replace(/\//g, '_')}`;
+        const limitKey = `ratelimit:auth:${clientKey}:${req.path.replace(/\//g, '_')}`;
 
-        const result = await checkRateLimit(redisKey, tier.maxRequests, tier.windowMs);
+        const result = checkRateLimit(limitKey, tier.maxRequests, tier.windowMs);
 
         // Set standard rate limit headers
         res.setHeader('X-RateLimit-Limit', result.limit.toString());

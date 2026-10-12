@@ -37,7 +37,7 @@ export async function createUserGraph(userId: string): Promise<void> {
   });
 
   try {
-    logger.info(`Redis connection established, creating graph: ${graphName}`);
+    logger.info(`FalkorDB connection established, creating graph: ${graphName}`);
     
     const indexQueries = [
       'CREATE INDEX FOR (c:Vector_Chunk) ON (c.id)',
@@ -76,7 +76,7 @@ export async function createUserGraph(userId: string): Promise<void> {
     });
   } finally {
     redis.disconnect();
-    logger.info(`Redis connection closed for ${graphName}`);
+    logger.info(`FalkorDB connection closed for ${graphName}`);
   }
 }
 

@@ -1547,7 +1547,7 @@ authRouter.post('/connections/sync', requireAuth, async (req: AuthenticatedReque
         });
 
     } catch (error) {
-        console.error('Sync connections error:', error);
+        logger.error('Sync connections error:', error);
         res.status(500).json({
             success: false,
             error: 'Internal server error',
@@ -1729,7 +1729,7 @@ authRouter.get('/connections/:provider/token', requireAuth, async (req: Authenti
         });
 
     } catch (error) {
-        console.error('Get token error:', error);
+        logger.error('Get token error:', error);
         res.status(500).json({
             success: false,
             error: 'Internal server error',
@@ -1780,7 +1780,7 @@ authRouter.post('/internal/tokens', async (req: Request, res: Response) => {
         });
 
     } catch (error) {
-        console.error('Internal token error:', error);
+        logger.error('Internal token error:', error);
         res.status(500).json({
             success: false,
             error: 'Internal server error',

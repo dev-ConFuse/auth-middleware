@@ -115,7 +115,7 @@ export async function findOrCreateByAuth0(input: CreateUserInput): Promise<User>
             },
         });
     } catch (error) {
-        console.warn('[USER] Failed to create default preferences:', error);
+        logger.warn('[USER] Failed to create default preferences:', error);
     }
 
     return user as User;
@@ -186,7 +186,7 @@ export async function deleteUserAccount(userId: string): Promise<void> {
         const { deleteUserGraph } = await import('./user-graph.js');
         await deleteUserGraph(userId);
     } catch (error) {
-        console.error(`[USER_DELETE] Failed to delete FalkorDB graph for user ${userId}:`, error);
+        logger.error(`[USER_DELETE] Failed to delete FalkorDB graph for user ${userId}:`, error);
         // We continue with the deletion even if graph deletion fails
         // to avoid putting the account in a stuck state.
     }
@@ -198,9 +198,9 @@ export async function deleteUserAccount(userId: string): Promise<void> {
         await prisma.user.delete({
             where: { id: userId }
         });
-        console.info(`[USER_DELETE] Successfully deleted user record ${userId} and cascaded data`);
+        logger.info(`[USER_DELETE] Successfully deleted user record ${userId} and cascaded data`);
     } catch (error) {
-        console.error(`[USER_DELETE] Failed to delete PostgreSQL user ${userId}:`, error);
+        logger.error(`[USER_DELETE] Failed to delete PostgreSQL user ${userId}:`, error);
         throw new Error(`Failed to delete user account: ${error instanceof Error ? error.message : String(error)}`);
     }
 }

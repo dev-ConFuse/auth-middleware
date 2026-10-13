@@ -6,6 +6,7 @@
 import { Router, type Request, type Response } from 'express';
 import prisma from '../infra/db.js';
 import { requireAuth } from '../auth.js';
+import { logger } from '../utils/logger.js';
 import type { AuthenticatedRequest, Auth0Claims } from '../types/index.js';
 
 // Health routes
@@ -58,7 +59,7 @@ userRoutes.get('/onboarding', requireAuth, async (req: AuthenticatedRequest, res
             data: user,
         });
     } catch (error) {
-        console.error('[ONBOARDING] GET error:', error);
+        logger.error('[ONBOARDING] GET error:', error);
         res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
     }
 });
@@ -87,7 +88,7 @@ userRoutes.post('/onboarding', requireAuth, async (req: AuthenticatedRequest, re
             data: user,
         });
     } catch (error) {
-        console.error('[ONBOARDING] POST error:', error);
+        logger.error('[ONBOARDING] POST error:', error);
         res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
     }
 });
@@ -115,7 +116,7 @@ userRoutes.delete('/', requireAuth, async (req: AuthenticatedRequest, res: Respo
             message: 'User account and associated data successfully deleted.'
         });
     } catch (error) {
-        console.error('[USER_DELETE] DELETE error:', error);
+        logger.error('[USER_DELETE] DELETE error:', error);
         res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
     }
 });

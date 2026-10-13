@@ -145,8 +145,43 @@ app.use((req: Request, res: Response) => {
     });
 });
 
-// Error handler
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+// Error handler — client mistakes (malformed JSON, oversized/unsupported
+// bodies) map to 4xx so bad input never looks like a server failure; the
+// service must stay healthy and keep serving after malformed traffic.
+interface HttpError extends Error {
+    status?: number;
+    statusCode?: number;
+    type?: string;
+}
+
+app.use((err: HttpError, req: Request, res: Response, _next: NextFunction) => {
+    const status = typeof err.status === 'number' ? err.status : err.statusCode;
+    const isBodyError =
+        err.type === 'entity.parse.failed' ||
+        err.type === 'entity.too.large' ||
+        err.type === 'encoding.unsupported' ||
+        (err instanceof SyntaxError && status === 400);
+
+    if (isBodyError || (typeof status === 'number' && status >= 400 && status < 500)) {
+        const code =
+            typeof status === 'number' && status >= 400 && status < 500
+                ? status
+                : err.type === 'entity.too.large'
+                    ? 413
+                    : err.type === 'encoding.unsupported'
+                        ? 415
+                        : 400;
+        logger.warn(`[AUTH-MIDDLEWARE] [${code}] Bad request: ${err.message}`, {
+            path: req.path,
+            type: err.type,
+        });
+        res.status(code).json({
+            error: code === 400 ? 'Invalid request body' : 'Bad request',
+            message: err.message,
+        });
+        return;
+    }
+
     logger.error(`[AUTH-MIDDLEWARE] [ERROR] Unhandled error: ${err.message}`, { stack: err.stack });
     res.status(500).json({
         error: 'Internal server error',

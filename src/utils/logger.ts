@@ -2,6 +2,22 @@ import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
 import { AsyncLocalStorage } from 'async_hooks';
+import dotenv from 'dotenv';
+
+// Load env files before reading LOG_LEVEL / LOG_FORMAT (env-policy: .map.env →
+// .secret.env → .env.local; required vars fail fast, never silently defaulted)
+dotenv.config({ path: path.resolve(process.cwd(), '.map.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.secret.env'), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
+
+const logLevel = process.env.LOG_LEVEL;
+if (!logLevel) {
+    throw new Error('Missing required environment variable: LOG_LEVEL');
+}
+const logFormat = process.env.LOG_FORMAT;
+if (!logFormat) {
+    throw new Error('Missing required environment variable: LOG_FORMAT');
+}
 
 // Ensure logs directory exists (file logging is disabled if the FS is read-only)
 const logDir = 'logs';
@@ -53,28 +69,32 @@ const addCorrelationId = winston.format((info) => {
 const format = winston.format.combine(
     addCorrelationId(),
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
-    winston.format.colorize({ all: true }),
-    winston.format.printf(
-        (info: Record<string, unknown>) => {
-            const corr = info.correlationId ? `[${String(info.correlationId)}] ` : '';
-            const meta = { ...info };
-            delete meta['timestamp'];
-            delete meta['level'];
-            delete meta['message'];
-            delete meta['correlationId'];
-            
-            let metaStr = '';
-            if (Object.keys(meta).length > 0) {
-                metaStr = ' ' + JSON.stringify(meta, (key, value) => {
-                    if (value instanceof Error) {
-                        return { message: value.message, stack: value.stack, name: value.name };
+    ...(logFormat === 'json'
+        ? [winston.format.json()]
+        : [
+            winston.format.colorize({ all: true }),
+            winston.format.printf(
+                (info: Record<string, unknown>) => {
+                    const corr = info.correlationId ? `[${String(info.correlationId)}] ` : '';
+                    const meta = { ...info };
+                    delete meta['timestamp'];
+                    delete meta['level'];
+                    delete meta['message'];
+                    delete meta['correlationId'];
+
+                    let metaStr = '';
+                    if (Object.keys(meta).length > 0) {
+                        metaStr = ' ' + JSON.stringify(meta, (key, value) => {
+                            if (value instanceof Error) {
+                                return { message: value.message, stack: value.stack, name: value.name };
+                            }
+                            return value;
+                        });
                     }
-                    return value;
-                });
-            }
-            return `${String(info['timestamp'])} ${String(info['level'])}: ${corr}${String(info['message'])}${metaStr}`;
-        }
-    )
+                    return `${String(info['timestamp'])} ${String(info['level'])}: ${corr}${String(info['message'])}${metaStr}`;
+                }
+            ),
+        ]),
 );
 
 const transports: winston.transport[] = [
@@ -111,7 +131,7 @@ if (fileLoggingEnabled) {
 }
 
 export const logger = winston.createLogger({
-    level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    level: logLevel,
     levels,
     transports,
 });

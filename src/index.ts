@@ -19,6 +19,21 @@ import { falkordbConnectionsRouter } from './routes/falkordb-connections.js';
 import { randomUUID } from 'crypto';
 import { logger, asyncLocalStorage } from './utils/logger.js';
 import { rateLimitMiddleware } from './middleware/rate-limiter.js';
+
+const SENSITIVE_QUERY_KEYS = ['token', 'key', 'secret', 'password', 'auth'];
+
+/** Redact secret-looking query values so access logs never leak credentials. */
+function sanitizeQuery(query: string): string {
+    return query
+        .split('&')
+        .map((pair) => {
+            const key = pair.split('=')[0];
+            return SENSITIVE_QUERY_KEYS.some((needle) => key.toLowerCase().includes(needle))
+                ? `${key}=[redacted]`
+                : pair;
+        })
+        .join('&');
+}
 import { securityHeadersMiddleware } from './middleware/security-headers.js';
 import { startGrpcServer } from './infra/grpc.js';
 
@@ -76,7 +91,10 @@ app.use(express.json());
 // Rate limiting (after body parsing, before routes)
 app.use(rateLimitMiddleware());
 
-// Correlation ID and Request logging
+// Correlation ID and Request logging (uniform ConFuse observability contract:
+// one access record per request with outcome classification — success /
+// redirect / client_error / server_error — so failures and redirects are as
+// visible as successes; query values are redacted before logging)
 app.use((req: Request, res: Response, next: NextFunction) => {
     const correlationId = (req.headers['x-correlation-id'] as string) || randomUUID();
     res.setHeader('X-Correlation-Id', correlationId);
@@ -86,18 +104,38 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
     asyncLocalStorage.run(store, () => {
         const start = Date.now();
+        const query = req.originalUrl.includes('?')
+            ? sanitizeQuery(req.originalUrl.slice(req.originalUrl.indexOf('?') + 1))
+            : '';
         logger.http(`[REQUEST] ${req.method} ${req.path} started`, {
             headers: { authorization: req.headers.authorization ? 'present' : 'absent', 'x-service-name': req.headers['x-service-name'] },
             ip: req.ip,
+            query,
+            userAgent: req.headers['user-agent'],
         });
         res.on('finish', () => {
-            const duration = Date.now() - start;
-            const level = res.statusCode >= 400 ? 'error' : 'info';
-            const msg = `[RESPONSE] ${req.method} ${req.path} ${res.statusCode} ${duration}ms`;
-            if (level === 'error') {
-                logger.error(msg);
+            const durationMs = Date.now() - start;
+            const status = res.statusCode;
+            const base = {
+                method: req.method,
+                path: req.path,
+                query,
+                status,
+                durationMs,
+                ip: req.ip,
+            };
+            if (status < 300) {
+                logger.http(`[RESPONSE] ${req.method} ${req.path} ${status} ${durationMs}ms`, { ...base, outcome: 'success' });
+            } else if (status < 400) {
+                logger.warn(`[REDIRECT] ${req.method} ${req.path} ${status} ${durationMs}ms`, {
+                    ...base,
+                    outcome: 'redirect',
+                    location: res.getHeader('location'),
+                });
+            } else if (status < 500) {
+                logger.warn(`[CLIENT_ERROR] ${req.method} ${req.path} ${status} ${durationMs}ms`, { ...base, outcome: 'client_error' });
             } else {
-                logger.http(msg);
+                logger.error(`[SERVER_ERROR] ${req.method} ${req.path} ${status} ${durationMs}ms`, { ...base, outcome: 'server_error' });
             }
         });
         next();

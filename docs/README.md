@@ -7,7 +7,7 @@ FalkorDB connection records.
 > This is the canonical README for the service; **all documentation lives in
 > [`docs/`](./)** (this folder). See [index.md](index.md) for the docs index.
 
-**Service**: `auth-middleware/` · **HTTP port**: `3010` · **gRPC**: `50058`
+**Service**: `auth-middleware/` · **HTTP port**: `3010` · **internal gRPC**: `50058`
 **Stack**: Node 22, Express, TypeScript (ESM), Prisma (PostgreSQL), ioredis
 
 ## Role in ConFuse
@@ -19,7 +19,7 @@ FalkorDB connection records.
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                  AUTH-MIDDLEWARE (This Service)                      │
-│                        HTTP :3010 · gRPC :50058                      │
+│              HTTP :3010 · internal-network gRPC :50058               │
 │   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐              │
 │   │ Auth0       │   │  OAuth2     │   │  API Keys   │              │
 │   │ Validation  │   │  Flows      │   │  Management │              │
@@ -90,12 +90,14 @@ npm run dev
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | HTTP server port | `3010` |
-| `GRPC_PORT` | gRPC server port | `50058` |
+| `GRPC_PORT` | Internal gRPC server port (do not expose on untrusted networks) | `50058` |
 | `DATABASE_URL` | PostgreSQL connection | Required |
 | `TOKEN_CACHE_TTL_SECONDS` | Token cache TTL | `900` |
 | `FEATURE_TOGGLE_SERVICE_URL` | Feature toggle service | `http://localhost:3099` |
 
 See [configuration.md](configuration.md) for the complete list.
+The gRPC listener uses plaintext transport; keep it on an isolated, trusted
+service network or configure TLS before deploying across untrusted networks.
 
 ## Logging
 

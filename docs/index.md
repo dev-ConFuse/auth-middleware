@@ -4,7 +4,7 @@
 
 ## What is this service?
 
-The **auth-middleware** is ConFuse's centralized authentication and authorization layer. It provides **Auth0-based JWT validation** and **gRPC authentication services** for all microservices in the platform.
+The **auth-middleware** is ConFuse's centralized authentication and authorization layer. It provides **Auth0-based JWT validation** over REST and **gRPC authentication services** to internal services. The gRPC listener is not published to the host in the local stack.
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ npm run dev
 
 The service starts at:
 - **HTTP**: `http://localhost:3010`
-- **gRPC**: `localhost:50058`
+- **gRPC**: internal service network only (`auth-middleware:50058`); not host-published in the local stack
 
 ## Documentation
 

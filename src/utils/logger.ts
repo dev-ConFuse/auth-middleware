@@ -60,7 +60,7 @@ const addCorrelationId = winston.format((info) => {
     if (store) {
         const correlationId = store.get('correlationId');
         if (correlationId) {
-            info.correlationId = correlationId;
+            info.correlation_id = correlationId;
         }
     }
     return info;
@@ -75,12 +75,12 @@ const format = winston.format.combine(
             winston.format.colorize({ all: true }),
             winston.format.printf(
                 (info: Record<string, unknown>) => {
-                    const corr = info.correlationId ? `[${String(info.correlationId)}] ` : '';
+                    const corr = info.correlation_id ? `[${String(info.correlation_id)}] ` : '';
                     const meta = { ...info };
                     delete meta['timestamp'];
                     delete meta['level'];
                     delete meta['message'];
-                    delete meta['correlationId'];
+                    delete meta['correlation_id'];
 
                     let metaStr = '';
                     if (Object.keys(meta).length > 0) {

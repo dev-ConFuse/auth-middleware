@@ -107,11 +107,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
         const query = req.originalUrl.includes('?')
             ? sanitizeQuery(req.originalUrl.slice(req.originalUrl.indexOf('?') + 1))
             : '';
-        logger.http(`[REQUEST] ${req.method} ${req.path} started`, {
+        logger.debug(`[REQUEST] ${req.method} ${req.path} started`, {
             headers: { authorization: req.headers.authorization ? 'present' : 'absent', 'x-service-name': req.headers['x-service-name'] },
-            ip: req.ip,
+            client: req.ip,
             query,
-            userAgent: req.headers['user-agent'],
+            user_agent: req.headers['user-agent'],
         });
         res.on('finish', () => {
             const durationMs = Date.now() - start;
@@ -121,11 +121,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
                 path: req.path,
                 query,
                 status,
-                durationMs,
-                ip: req.ip,
+                duration_ms: durationMs,
+                client: req.ip,
+                user_agent: req.headers['user-agent'],
             };
             if (status < 300) {
-                logger.http(`[RESPONSE] ${req.method} ${req.path} ${status} ${durationMs}ms`, { ...base, outcome: 'success' });
+                logger.info(`[RESPONSE] ${req.method} ${req.path} ${status} ${durationMs}ms`, { ...base, outcome: 'success' });
             } else if (status < 400) {
                 logger.warn(`[REDIRECT] ${req.method} ${req.path} ${status} ${durationMs}ms`, {
                     ...base,

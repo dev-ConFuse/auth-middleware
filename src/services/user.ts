@@ -30,11 +30,30 @@ async function ensureUserGraphExists(userId: string): Promise<void> {
 }
 
 /**
+ * Normalizes an Auth0 subject into a safe string before any database lookup.
+ */
+export function normalizeAuth0Sub(auth0Sub?: string | null): string | null {
+    if (typeof auth0Sub !== 'string') {
+        return null;
+    }
+
+    const normalized = auth0Sub.trim();
+    return normalized.length > 0 ? normalized : null;
+}
+
+/**
  * Find or create user by Auth0 subject
  */
 export async function findOrCreateByAuth0(input: CreateUserInput): Promise<User> {
-    logger.info('[USER] findOrCreateByAuth0 called', { auth0Sub: input.auth0Sub, email: input.email });
-    let { auth0Sub, email, name, picture } = input;
+    const auth0Sub = normalizeAuth0Sub(input.auth0Sub);
+    logger.info('[USER] findOrCreateByAuth0 called', { auth0Sub, email: input.email ?? null });
+
+    if (!auth0Sub) {
+        logger.error('[USER] Missing auth0Sub in create/login request', { email: input.email ?? null });
+        throw new Error('Cannot sync user without a valid Auth0 subject');
+    }
+
+    let { email, name, picture } = input;
 
     if (!email || email.trim() === '') {
         email = `${auth0Sub.replace(/[^a-zA-Z0-9]/g, '_')}@auth0.confuse.dev`;
@@ -135,8 +154,13 @@ export async function findById(id: string): Promise<User | null> {
  * Find user by auth0Sub
  */
 export async function findByAuth0Sub(auth0Sub: string): Promise<User | null> {
+    const normalized = normalizeAuth0Sub(auth0Sub);
+    if (!normalized) {
+        return null;
+    }
+
     const user = await prisma.user.findUnique({
-        where: { auth0Sub },
+        where: { auth0Sub: normalized },
     });
     return user as User | null;
 }
@@ -145,8 +169,13 @@ export async function findByAuth0Sub(auth0Sub: string): Promise<User | null> {
  * Find user by email
  */
 export async function findByEmail(email: string): Promise<User | null> {
+    const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+    if (!normalizedEmail) {
+        return null;
+    }
+
     const user = await prisma.user.findUnique({
-        where: { email },
+        where: { email: normalizedEmail },
     });
     return user as User | null;
 }

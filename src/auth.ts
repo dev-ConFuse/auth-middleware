@@ -113,7 +113,13 @@ let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
  * Helper to resolve a user from Auth0 claims by checking auth0Sub first, then email.
  */
 async function resolveUserFromClaims(claims: Auth0Claims) {
-    let user = await findByAuth0Sub(claims.sub);
+    const auth0Sub = typeof claims.sub === 'string' ? claims.sub.trim() : '';
+    if (!auth0Sub) {
+        logger.warn('[AUTH] Auth0 claims are missing a valid subject', { email: claims.email ?? null, claimKeys: Object.keys(claims ?? {}) });
+        return null;
+    }
+
+    let user = await findByAuth0Sub(auth0Sub);
     if (!user && claims.email) {
         user = await findByEmail(claims.email);
     }
@@ -126,7 +132,8 @@ async function resolveUserFromClaims(claims: Auth0Claims) {
 function getJWKS() {
     if (!jwks) {
         jwks = createRemoteJWKSet(
-            new URL(`https://${config.auth0.domain}/.well-known/jwks.json`)
+            new URL(`https://${config.auth0.domain}/.well-known/jwks.json`),
+            { timeoutDuration: 15_000 }
         );
     }
     return jwks;
@@ -170,9 +177,13 @@ export async function verifyAuth0Token(token: string): Promise<Auth0Claims> {
         // Normalize payload to Auth0Claims for downstream use
         const claims = payload as Auth0Claims;
 
+        if (!claims.sub || typeof claims.sub !== 'string' || !claims.sub.trim()) {
+            throw new Error('Auth0 token is missing a valid subject claim');
+        }
+
         // Cache the validated token
         await tokenCache.setToken(tokenHash, {
-            userId: claims.sub || '',
+            userId: claims.sub,
             email: claims.email || '',
             roles: extractRoles(claims),
             validatedAt: Date.now(),

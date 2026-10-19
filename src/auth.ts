@@ -122,7 +122,7 @@ export class Auth0UnavailableError extends Error {
 }
 
 /** Network-level failure signatures produced by fetch/undici/jose. */
-const TRANSIENT_AUTH0_ERROR = /fetch failed|network|econnreset|econnrefused|etimedout|enotfound|eai_again|aborted|timeout/i;
+const TRANSIENT_AUTH0_ERROR = /fetch failed|network|econnreset|econnrefused|etimedout|timed out|enotfound|eai_again|aborted|timeout|expected 200 ok from the json web key set/i;
 
 /** True for transport failures (retryable), false for crypto/claim failures. */
 function isTransientAuth0Error(error: unknown): boolean {
@@ -131,6 +131,10 @@ function isTransientAuth0Error(error: unknown): boolean {
     }
     if (!(error instanceof Error)) {
         return false;
+    }
+    // jose's JWKSTimeout plus fetch abort/timeout DOMException names.
+    if (error.name === 'JWKSTimeout' || error.name === 'TimeoutError' || error.name === 'AbortError') {
+        return true;
     }
     const cause = error.cause instanceof Error ? ` ${error.cause.message}` : '';
     return TRANSIENT_AUTH0_ERROR.test(`${error.message}${cause}`);

@@ -10,7 +10,13 @@ interface Auth0Config {
     domain: string;
     issuer: string;
     audience: string;
-    jwksUri?: string;
+    jwksUri: string;
+    /** JWKS fetch timeout in ms (tuning — env-only, see .cline/rules/env-policy.md). */
+    jwksTimeoutMs: number;
+    /** JWKS fetch attempts before surfacing Auth0UnavailableError. */
+    jwksRetries: number;
+    /** Base backoff delay in ms between JWKS fetch attempts. */
+    jwksRetryDelayMs: number;
     clientId?: string;
     clientSecret?: string;
     managementDomain?: string;
@@ -102,6 +108,9 @@ export const config: Config = {
         issuer: requireEnv('AUTH0_ISSUER'),
         audience: requireEnv('AUTH0_AUDIENCE'),
         jwksUri: requireEnv('AUTH0_JWKS_URI'),
+        jwksTimeoutMs: parseIntEnv(['AUTH0_JWKS_TIMEOUT_MS'], requireEnv('AUTH0_JWKS_TIMEOUT_MS')),
+        jwksRetries: parseIntEnv(['AUTH0_JWKS_RETRIES'], requireEnv('AUTH0_JWKS_RETRIES')),
+        jwksRetryDelayMs: parseIntEnv(['AUTH0_JWKS_RETRY_DELAY_MS'], requireEnv('AUTH0_JWKS_RETRY_DELAY_MS')),
         clientId: process.env.AUTH0_CLIENT_ID,
         clientSecret: process.env.AUTH0_CLIENT_SECRET,
         managementDomain: process.env.AUTH0_MANAGEMENT_DOMAIN || process.env.AUTH0_DOMAIN,

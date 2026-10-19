@@ -5,7 +5,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from '../config.js';
-import { verifyAuth0Token, extractRoles, refreshTokenIfNeeded, getProviderAliases } from '../auth.js';
+import { verifyAuth0Token, extractRoles, refreshTokenIfNeeded, getProviderAliases, Auth0UnavailableError } from '../auth.js';
 import { findById } from '../services/user.js';
 import { logger } from '../utils/logger.js';
 import { prisma } from './db.js';
@@ -60,6 +60,13 @@ const validateToken = async (call: any, callback: any) => {
             subscription_tier: subscriptionTier,
         });
     } catch (error: any) {
+        if (error instanceof Auth0UnavailableError) {
+            // Propagate the failure so the caller falls back / retries instead
+            // of treating a verified-unknown token as invalid.
+            logger.warn(`[gRPC] Auth0 unreachable during token validation: ${error.message}`);
+            callback(error);
+            return;
+        }
         logger.warn(`[gRPC] Token validation failed: ${error.message}`);
         callback(null, { valid: false, error: error.message });
     }

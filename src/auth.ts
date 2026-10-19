@@ -110,6 +110,37 @@ export class OAuthStateService {
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 /**
+ * Thrown when Auth0 could not be reached to verify a token (network/infra
+ * failure), as opposed to the token actually being invalid. Callers map this
+ * to 503 so clients retry instead of treating the user as unauthenticated.
+ */
+export class Auth0UnavailableError extends Error {
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options);
+        this.name = 'Auth0UnavailableError';
+    }
+}
+
+/** Network-level failure signatures produced by fetch/undici/jose. */
+const TRANSIENT_AUTH0_ERROR = /fetch failed|network|econnreset|econnrefused|etimedout|enotfound|eai_again|aborted|timeout/i;
+
+/** True for transport failures (retryable), false for crypto/claim failures. */
+function isTransientAuth0Error(error: unknown): boolean {
+    if (error instanceof Auth0UnavailableError) {
+        return true;
+    }
+    if (!(error instanceof Error)) {
+        return false;
+    }
+    const cause = error.cause instanceof Error ? ` ${error.cause.message}` : '';
+    return TRANSIENT_AUTH0_ERROR.test(`${error.message}${cause}`);
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Helper to resolve a user from Auth0 claims by checking auth0Sub first, then email.
  */
 async function resolveUserFromClaims(claims: Auth0Claims) {
@@ -132,8 +163,8 @@ async function resolveUserFromClaims(claims: Auth0Claims) {
 function getJWKS() {
     if (!jwks) {
         jwks = createRemoteJWKSet(
-            new URL(`https://${config.auth0.domain}/.well-known/jwks.json`),
-            { timeoutDuration: 15_000 }
+            new URL(config.auth0.jwksUri),
+            { timeoutDuration: config.auth0.jwksTimeoutMs }
         );
     }
     return jwks;
@@ -167,21 +198,50 @@ export async function verifyAuth0Token(token: string): Promise<Auth0Claims> {
     }
 
     const jwks = getJWKS();
-    
-    try {
-        const { payload } = await jwtVerify(token, jwks, {
-            issuer: `https://${config.auth0.domain}/`,
-            audience: config.auth0.audience,
-        });
 
-        // Normalize payload to Auth0Claims for downstream use
-        const claims = payload as Auth0Claims;
-
-        if (!claims.sub || typeof claims.sub !== 'string' || !claims.sub.trim()) {
-            throw new Error('Auth0 token is missing a valid subject claim');
+    // Retry transient Auth0 outages (e.g. JWKS fetch ECONNRESET) before giving
+    // up — a flaky network must never masquerade as an invalid token.
+    let claims: Auth0Claims | undefined;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= config.auth0.jwksRetries; attempt++) {
+        try {
+            const { payload } = await jwtVerify(token, jwks, {
+                issuer: config.auth0.issuer,
+                audience: config.auth0.audience,
+            });
+            claims = payload as Auth0Claims;
+            lastError = undefined;
+            break;
+        } catch (error) {
+            lastError = error;
+            if (!isTransientAuth0Error(error) || attempt === config.auth0.jwksRetries) {
+                break;
+            }
+            logger.warn('[AUTH] Transient Auth0 failure, retrying', {
+                attempt,
+                maxAttempts: config.auth0.jwksRetries,
+                message: error instanceof Error ? error.message : String(error),
+            });
+            await sleep(config.auth0.jwksRetryDelayMs * attempt);
         }
+    }
 
-        // Cache the validated token
+    if (!claims) {
+        const message = lastError instanceof Error ? lastError.message : 'Unknown error';
+        if (isTransientAuth0Error(lastError)) {
+            throw new Auth0UnavailableError(`Auth0 unavailable: ${message}`, { cause: lastError });
+        }
+        throw new Error(`Invalid token: ${message}`);
+    }
+
+    // Normalize payload to Auth0Claims for downstream use
+    if (!claims.sub || typeof claims.sub !== 'string' || !claims.sub.trim()) {
+        throw new Error('Invalid token: Auth0 token is missing a valid subject claim');
+    }
+
+    // Cache the validated token (best-effort — a cache hiccup must not fail a
+    // token that was just verified)
+    try {
         await tokenCache.setToken(tokenHash, {
             userId: claims.sub,
             email: claims.email || '',
@@ -189,11 +249,13 @@ export async function verifyAuth0Token(token: string): Promise<Auth0Claims> {
             validatedAt: Date.now(),
             expiresAt: Date.now() + (config.tokenCacheTtlSeconds * 1000),
         });
-
-        return claims;
-    } catch (error) {
-        throw new Error(`Invalid token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (cacheError) {
+        logger.warn('[AUTH] Token cache write failed', {
+            message: cacheError instanceof Error ? cacheError.message : String(cacheError),
+        });
     }
+
+    return claims;
 }
 
 
@@ -328,6 +390,14 @@ export async function requireAuth(
         next();
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Invalid token';
+        if (error instanceof Auth0UnavailableError) {
+            logger.warn('[AUTH] Auth0 unreachable during token verification', { message });
+            res.status(503).json({
+                error: 'Auth service temporarily unavailable',
+                message: 'Could not reach Auth0 to verify the token. Please retry.',
+            });
+            return;
+        }
         res.status(401).json({
             error: 'Invalid token',
             message,
@@ -402,6 +472,14 @@ authRouter.post('/login', async (req: Request, res: Response) => {
             claims = await verifyAuth0Token(auth0Token);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
+            if (error instanceof Auth0UnavailableError) {
+                logger.error('[AUTH-LOGIN] Auth0 unreachable during login', { message });
+                res.status(503).json({
+                    error: 'Auth service temporarily unavailable',
+                    message: 'Could not reach Auth0 to verify the token. Please retry.',
+                });
+                return;
+            }
             logger.warn('[AUTH-LOGIN] Auth0 token verification failed', { message });
             res.status(401).json({
                 error: 'Invalid Auth0 token',
@@ -544,6 +622,14 @@ authRouter.post('/verify', async (req: Request, res: Response) => {
 
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Invalid token';
+        if (error instanceof Auth0UnavailableError) {
+            logger.warn('[AUTH-VERIFY] Auth0 unreachable during verification', { message });
+            res.status(503).json({
+                error: 'Auth service temporarily unavailable',
+                message: 'Could not reach Auth0 to verify the token. Please retry.',
+            });
+            return;
+        }
         const response: TokenVerifyResponse = {
             valid: false,
             error: message,
@@ -574,6 +660,13 @@ authRouter.post('/validate', async (req: Request, res: Response) => {
             roles: roles,
         });
     } catch (error) {
+        if (error instanceof Auth0UnavailableError) {
+            logger.warn('[AUTH-VALIDATE] Auth0 unreachable during validation', {
+                message: error.message,
+            });
+            res.status(503).json({ error: 'Auth service temporarily unavailable' });
+            return;
+        }
         res.status(401).json({ error: 'Invalid token' });
     }
 });

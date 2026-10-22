@@ -93,6 +93,10 @@ npm run dev
 | `GRPC_PORT` | Internal gRPC server port (do not expose on untrusted networks) | `50058` |
 | `DATABASE_URL` | PostgreSQL connection | Required |
 | `TOKEN_CACHE_TTL_SECONDS` | Token cache TTL | `900` |
+| `DB_RETRY_ATTEMPTS` | Attempts for transient Postgres connectivity failures (see `src/infra/db.ts`) | `3` |
+| `DB_RETRY_DELAY_MS` | Base backoff between DB retry attempts | `500` |
+| `DB_CONNECT_TIMEOUT_MS` | pg connect timeout — sized to the slow container→Neon handshake | `15000` |
+| `DB_HEALTH_TIMEOUT_MS` | Upper bound for the `/health` DB probe (liveness stays fast) | `1500` |
 | `FEATURE_TOGGLE_SERVICE_URL` | Feature toggle service | `http://localhost:3099` |
 
 See [configuration.md](configuration.md) for the complete list.

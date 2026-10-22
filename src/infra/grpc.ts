@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { verifyAuth0Token, extractRoles, refreshTokenIfNeeded, getProviderAliases, Auth0UnavailableError } from '../auth.js';
 import { findById } from '../services/user.js';
 import { logger } from '../utils/logger.js';
-import { prisma } from './db.js';
+import { prisma, isDatabaseUnavailableError, DatabaseUnavailableError } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -200,6 +200,14 @@ const getUser = async (call: any, callback: any) => {
             metadata: {}, 
         });
     } catch (error: any) {
+        if (error instanceof DatabaseUnavailableError || isDatabaseUnavailableError(error)) {
+            logger.warn(`[gRPC] GetUser aborted, database unavailable: ${error.message}`);
+            callback({
+                code: grpc.status.UNAVAILABLE,
+                details: 'Database unavailable',
+            });
+            return;
+        }
         logger.error(`[gRPC] GetUser failed: ${error.message}`);
         callback({
             code: grpc.status.INTERNAL,

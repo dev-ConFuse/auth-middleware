@@ -222,9 +222,11 @@ app.use((err: HttpError, req: Request, res: Response, _next: NextFunction) => {
     }
 
     logger.error(`[AUTH-MIDDLEWARE] [ERROR] Unhandled error: ${err.message}`, { stack: err.stack });
+    // Never echo err.message: driver/Prisma internals must not reach clients,
+    // and NODE_ENV may be 'development' in local runs (see .map.env).
     res.status(500).json({
         error: 'Internal server error',
-        message: config.nodeEnv === 'development' ? err.message : undefined,
+        message: 'An unexpected error occurred.',
     });
 });
 

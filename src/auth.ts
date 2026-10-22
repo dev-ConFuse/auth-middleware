@@ -15,7 +15,7 @@ import { config } from './config.js';
 import { tokenCache } from './services/cache.js';
 import { findOrCreateByAuth0, findByAuth0Sub, findByEmail, toProfile } from './services/user.js';
 
-import prisma from './infra/db.js';
+import prisma, { isDatabaseUnavailableError, DatabaseUnavailableError } from './infra/db.js';
 import type { AuthenticatedRequest, AuthExchangeResponse, TokenVerifyResponse, Auth0Claims } from './types/index.js';
 
 // ============================================================================
@@ -402,6 +402,14 @@ export async function requireAuth(
             });
             return;
         }
+        if (error instanceof DatabaseUnavailableError || isDatabaseUnavailableError(error)) {
+            logger.warn('[AUTH] Database unreachable during token verification', { message });
+            res.status(503).json({
+                error: 'Service temporarily unavailable',
+                message: 'Could not reach the user database. Please retry.',
+            });
+            return;
+        }
         res.status(401).json({
             error: 'Invalid token',
             message,
@@ -565,10 +573,18 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     } catch (error) {
         const errObj = error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error;
+        if (error instanceof DatabaseUnavailableError || isDatabaseUnavailableError(error)) {
+            logger.error('[AUTH-LOGIN] Database unavailable during login', { error: errObj });
+            res.status(503).json({
+                error: 'Service temporarily unavailable',
+                message: 'Could not reach the user database. Please retry.',
+            });
+            return;
+        }
         logger.error('[AUTH-LOGIN] Login error', { error: errObj });
         res.status(500).json({
             error: 'Internal server error',
-            message: error instanceof Error ? error.message : 'Unknown error',
+            message: 'An unexpected error occurred while syncing your account.',
         });
     }
 });
@@ -594,6 +610,13 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
     } catch (error) {
         logger.error('[AUTH-ME] Get user error', { error });
+        if (error instanceof DatabaseUnavailableError || isDatabaseUnavailableError(error)) {
+            res.status(503).json({
+                error: 'Service temporarily unavailable',
+                message: 'Could not reach the user database. Please retry.',
+            });
+            return;
+        }
         res.status(500).json({
             error: 'Internal server error',
         });

@@ -5,7 +5,7 @@
  */
 
 import { User, UserProfile, CreateUserInput } from '../types/index.js';
-import prisma from '../infra/db.js';
+import prisma, { withDbRetry } from '../infra/db.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -42,9 +42,15 @@ export function normalizeAuth0Sub(auth0Sub?: string | null): string | null {
 }
 
 /**
- * Find or create user by Auth0 subject
+ * Find or create user by Auth0 subject.
+ * Wrapped in withDbRetry: a transient Postgres outage must not 500 a login
+ * that would succeed milliseconds later.
  */
 export async function findOrCreateByAuth0(input: CreateUserInput): Promise<User> {
+    return withDbRetry(() => syncAuth0User(input));
+}
+
+async function syncAuth0User(input: CreateUserInput): Promise<User> {
     const auth0Sub = normalizeAuth0Sub(input.auth0Sub);
     logger.info('[USER] findOrCreateByAuth0 called', { auth0Sub, email: input.email ?? null });
 
@@ -144,9 +150,9 @@ export async function findOrCreateByAuth0(input: CreateUserInput): Promise<User>
  * Find user by ID
  */
 export async function findById(id: string): Promise<User | null> {
-    const user = await prisma.user.findUnique({
+    const user = await withDbRetry(() => prisma.user.findUnique({
         where: { id },
-    });
+    }));
     return user as User | null;
 }
 
@@ -159,9 +165,9 @@ export async function findByAuth0Sub(auth0Sub: string): Promise<User | null> {
         return null;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await withDbRetry(() => prisma.user.findUnique({
         where: { auth0Sub: normalized },
-    });
+    }));
     return user as User | null;
 }
 
@@ -174,9 +180,9 @@ export async function findByEmail(email: string): Promise<User | null> {
         return null;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await withDbRetry(() => prisma.user.findUnique({
         where: { email: normalizedEmail },
-    });
+    }));
     return user as User | null;
 }
 

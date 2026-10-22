@@ -43,6 +43,14 @@ interface Config {
     auth0: Auth0Config;
 
     tokenCacheTtlSeconds: number;
+    /** Transient DB-failure retry attempts (see infra/db.ts withDbRetry). */
+    dbRetryAttempts: number;
+    /** Base backoff delay in ms between DB retry attempts. */
+    dbRetryDelayMs: number;
+    /** pg connect timeout in ms — fails fast so retries can kick in. */
+    dbConnectTimeoutMs: number;
+    /** Upper bound in ms for the /health DB probe (see infra/db.ts). */
+    dbHealthTimeoutMs: number;
     databaseUrl: string;
     corsOrigins: string[];
 
@@ -118,6 +126,12 @@ export const config: Config = {
 
     // Token cache TTL
     tokenCacheTtlSeconds: parseInt(requireEnv('TOKEN_CACHE_TTL_SECONDS'), 10),
+
+    // DB transient-failure retry (tuning — env-only, see .cline/rules/env-policy.md)
+    dbRetryAttempts: parseIntEnv(['DB_RETRY_ATTEMPTS'], requireEnv('DB_RETRY_ATTEMPTS')),
+    dbRetryDelayMs: parseIntEnv(['DB_RETRY_DELAY_MS'], requireEnv('DB_RETRY_DELAY_MS')),
+    dbConnectTimeoutMs: parseIntEnv(['DB_CONNECT_TIMEOUT_MS'], requireEnv('DB_CONNECT_TIMEOUT_MS')),
+    dbHealthTimeoutMs: parseIntEnv(['DB_HEALTH_TIMEOUT_MS'], requireEnv('DB_HEALTH_TIMEOUT_MS')),
 
     // Database
     databaseUrl: requireEnv('DATABASE_URL'),

@@ -4,7 +4,7 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import prisma from '../infra/db.js';
+import prisma, { probeDatabaseHealth } from '../infra/db.js';
 import { requireAuth } from '../auth.js';
 import { logger } from '../utils/logger.js';
 import type { AuthenticatedRequest, Auth0Claims } from '../types/index.js';
@@ -17,14 +17,10 @@ healthRoutes.get('/', (_req: Request, res: Response) => {
 });
 
 healthRoutes.get('/health', async (_req: Request, res: Response) => {
-    let dbStatus = 'unknown';
-
-    try {
-        await prisma.$queryRaw`SELECT 1`;
-        dbStatus = 'connected';
-    } catch {
-        dbStatus = 'disconnected';
-    }
+    // Bounded probe: /health is a liveness endpoint (Docker HEALTHCHECK 10 s,
+    // LB probes, test harness 3 s) — it must answer even when the DB connect
+    // is slow, reporting 'timeout' instead of blocking the request.
+    const dbStatus = await probeDatabaseHealth();
 
     res.json({
         status: 'healthy',

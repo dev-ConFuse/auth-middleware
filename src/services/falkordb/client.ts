@@ -12,7 +12,7 @@
  */
 
 import { Redis, type Cluster, type RedisOptions } from 'ioredis';
-import type { FalkorDBTopology } from '../../types/falkordb.js';
+import type { FalkorDbTopology } from '../../types/falkordb.js';
 
 export const DEFAULT_FALKORDB_PORT = 6379;
 
@@ -25,7 +25,7 @@ export interface ParsedFalkorConnectionUrl {
     password?: string;
 }
 
-export interface FalkorDBTarget {
+export interface FalkorDbTarget {
     host: string;
     port: number;
     username?: string;
@@ -34,11 +34,11 @@ export interface FalkorDBTarget {
     caCertificate?: string;
     clientCertificate?: string;
     clientKey?: string;
-    topology?: FalkorDBTopology;
+    topology?: FalkorDbTopology;
     sentinelMasterName?: string;
 }
 
-export interface FalkorDBClientHandle {
+export interface FalkorDbClientHandle {
     call(command: string, ...args: Array<string | number | Buffer>): Promise<unknown>;
     ping(): Promise<string>;
     close(): void;
@@ -128,7 +128,7 @@ function parseHostList(host: string, port: number): Array<{ host: string; port: 
         });
 }
 
-function buildCommonOptions(target: FalkorDBTarget): RedisOptions {
+function buildCommonOptions(target: FalkorDbTarget): RedisOptions {
     const options: RedisOptions = {
         connectTimeout: 10_000,
         // Health checks / provisioning should fail fast instead of retrying.
@@ -161,7 +161,7 @@ function buildCommonOptions(target: FalkorDBTarget): RedisOptions {
  * Create an ioredis client for the given target. The caller is responsible for
  * `connect()` and `close()`. Credentials stay in memory only — never logged.
  */
-export function createFalkorClient(target: FalkorDBTarget): FalkorDBClientHandle {
+export function createFalkorClient(target: FalkorDbTarget): FalkorDbClientHandle {
     const topology = target.topology ?? 'standalone';
     const common = buildCommonOptions(target);
 

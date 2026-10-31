@@ -14,33 +14,33 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { FalkorDBConnection as FalkorDBConnectionRow } from '@prisma/client';
+import type { FalkorDbConnection as FalkorDbConnectionRow } from '@prisma/client';
 import prisma from '../../infra/db.js';
 import type {
-    FalkorDBConnection,
-    FalkorDBConnectionInput,
-    FalkorDBConnectionPublic,
-    FalkorDBConnectionTestResult,
-    FalkorDBDeploymentType,
-    FalkorDBTestStatus,
-    FalkorDBTopology,
-    ResolvedFalkorDBConnection,
+    FalkorDbConnection,
+    FalkorDbConnectionInput,
+    FalkorDbConnectionPublic,
+    FalkorDbConnectionTestResult,
+    FalkorDbDeploymentType,
+    FalkorDbTestStatus,
+    FalkorDbTopology,
+    ResolvedFalkorDbConnection,
 } from '../../types/falkordb.js';
 import { logger } from '../../utils/logger.js';
 import { redactSensitive } from '../../utils/redact.js';
 import { deleteSecret, deleteSecretsByPrefix, getSecret, putSecret } from '../secret-store.js';
-import { parseFalkorConnectionUrl, type FalkorDBTarget } from './client.js';
-import { testFalkorDBConnection } from './connection-tester.js';
+import { parseFalkorConnectionUrl, type FalkorDbTarget } from './client.js';
+import { testFalkorDbConnection } from './connection-tester.js';
 
 const MAX_SECRET_LENGTH = 64 * 1024; // 64KB — plenty for PEM material
-const TOPOLOGIES: FalkorDBTopology[] = ['standalone', 'sentinel', 'cluster'];
-const DEPLOYMENT_TYPES: FalkorDBDeploymentType[] = ['cloud', 'self_hosted', 'byoc', 'unknown'];
+const TOPOLOGIES: FalkorDbTopology[] = ['standalone', 'sentinel', 'cluster'];
+const DEPLOYMENT_TYPES: FalkorDbDeploymentType[] = ['cloud', 'self_hosted', 'byoc', 'unknown'];
 
-export class FalkorDBInputError extends Error {
+export class FalkorDbInputError extends Error {
     status = 400;
     constructor(message: string) {
         super(message);
-        this.name = 'FalkorDBInputError';
+        this.name = 'FalkorDbInputError';
     }
 }
 
@@ -56,33 +56,33 @@ export interface NormalizedConnectionInput {
     caCertificate?: string;
     clientCertificate?: string;
     clientKey?: string;
-    topology: FalkorDBTopology;
-    deploymentType?: FalkorDBDeploymentType;
+    topology: FalkorDbTopology;
+    deploymentType?: FalkorDbDeploymentType;
     sentinelMasterName?: string;
 }
 
 function optionalText(value: unknown, field: string, max = 255): string | undefined {
     if (value === undefined || value === null || value === '') return undefined;
-    if (typeof value !== 'string') throw new FalkorDBInputError(`${field} must be a string`);
+    if (typeof value !== 'string') throw new FalkorDbInputError(`${field} must be a string`);
     const trimmed = value.trim();
     if (!trimmed) return undefined;
     if (trimmed.length > max) {
-        throw new FalkorDBInputError(`${field} must be at most ${max} characters`);
+        throw new FalkorDbInputError(`${field} must be at most ${max} characters`);
     }
     return trimmed;
 }
 
 function requireText(value: unknown, field: string, max = 255): string {
     const text = optionalText(value, field, max);
-    if (!text) throw new FalkorDBInputError(`${field} is required`);
+    if (!text) throw new FalkorDbInputError(`${field} is required`);
     return text;
 }
 
 function optionalSecret(value: unknown, field: string): string | undefined {
     if (value === undefined || value === null || value === '') return undefined;
-    if (typeof value !== 'string') throw new FalkorDBInputError(`${field} must be a string`);
+    if (typeof value !== 'string') throw new FalkorDbInputError(`${field} must be a string`);
     if (value.length > MAX_SECRET_LENGTH) {
-        throw new FalkorDBInputError(`${field} is too large`);
+        throw new FalkorDbInputError(`${field} is too large`);
     }
     return value;
 }
@@ -94,7 +94,7 @@ function optionalSecret(value: unknown, field: string): string | undefined {
  * are extracted into the password field — URLs themselves are never stored.
  */
 export function normalizeConnectionInput(
-    input: FalkorDBConnectionInput,
+    input: FalkorDbConnectionInput,
     existing?: NormalizedConnectionInput
 ): NormalizedConnectionInput {
     let urlHost: string | undefined;
@@ -114,7 +114,7 @@ export function normalizeConnectionInput(
 
     const host = optionalText(input.host, 'host') ?? urlHost ?? existing?.host;
     if (!host) {
-        throw new FalkorDBInputError(
+        throw new FalkorDbInputError(
             'host is required (or provide a falkor:// / falkors:// connectionUrl)'
         );
     }
@@ -122,18 +122,18 @@ export function normalizeConnectionInput(
     const portCandidate = input.port ?? urlPort ?? existing?.port ?? 6379;
     const port = Number(portCandidate);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        throw new FalkorDBInputError('port must be an integer between 1 and 65535');
+        throw new FalkorDbInputError('port must be an integer between 1 and 65535');
     }
 
     const tlsEnabled = input.tlsEnabled ?? urlTls ?? existing?.tlsEnabled ?? false;
     const topologyCandidate = input.topology ?? existing?.topology ?? 'standalone';
     if (!TOPOLOGIES.includes(topologyCandidate)) {
-        throw new FalkorDBInputError(`topology must be one of: ${TOPOLOGIES.join(', ')}`);
+        throw new FalkorDbInputError(`topology must be one of: ${TOPOLOGIES.join(', ')}`);
     }
 
     const deploymentTypeCandidate = input.deploymentType ?? existing?.deploymentType;
     if (deploymentTypeCandidate && !DEPLOYMENT_TYPES.includes(deploymentTypeCandidate)) {
-        throw new FalkorDBInputError(
+        throw new FalkorDbInputError(
             `deploymentType must be one of: ${DEPLOYMENT_TYPES.join(', ')}`
         );
     }
@@ -141,7 +141,7 @@ export function normalizeConnectionInput(
     const sentinelMasterName =
         optionalText(input.sentinelMasterName, 'sentinelMasterName') ?? existing?.sentinelMasterName;
     if (topologyCandidate === 'sentinel' && !sentinelMasterName) {
-        throw new FalkorDBInputError('sentinelMasterName is required for sentinel topology');
+        throw new FalkorDbInputError('sentinelMasterName is required for sentinel topology');
     }
 
     return {
@@ -168,7 +168,7 @@ function secretRefFor(connectionId: string, purpose: SecretPurpose): string {
     return `falkordb/${connectionId}/${purpose}`;
 }
 
-function toDomain(row: FalkorDBConnectionRow): FalkorDBConnection {
+function toDomain(row: FalkorDbConnectionRow): FalkorDbConnection {
     return {
         id: row.id,
         customerId: row.customerId,
@@ -182,19 +182,19 @@ function toDomain(row: FalkorDBConnectionRow): FalkorDBConnection {
         caCertificateSecretRef: row.caCertificateSecretRef ?? undefined,
         clientCertificateSecretRef: row.clientCertificateSecretRef ?? undefined,
         clientKeySecretRef: row.clientKeySecretRef ?? undefined,
-        topology: (row.topology as FalkorDBTopology | null) ?? undefined,
-        deploymentType: (row.deploymentType as FalkorDBDeploymentType | null) ?? undefined,
+        topology: (row.topology as FalkorDbTopology | null) ?? undefined,
+        deploymentType: (row.deploymentType as FalkorDbDeploymentType | null) ?? undefined,
         sentinelMasterName: row.sentinelMasterName ?? undefined,
         status: (row.status as 'active' | 'disabled') ?? 'active',
         lastTestedAt: row.lastTestedAt ?? null,
-        lastTestStatus: (row.lastTestStatus as FalkorDBTestStatus | null) ?? null,
+        lastTestStatus: (row.lastTestStatus as FalkorDbTestStatus | null) ?? null,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
     };
 }
 
 /** Public projection: secret refs become boolean flags, secrets never leave the server. */
-export function toPublicConnection(row: FalkorDBConnectionRow): FalkorDBConnectionPublic {
+export function toPublicConnection(row: FalkorDbConnectionRow): FalkorDbConnectionPublic {
     const domain = toDomain(row);
     return {
         id: domain.id,
@@ -227,7 +227,7 @@ function buildTarget(normalized: NormalizedConnectionInput, credentials?: {
     caCertificate?: string;
     clientCertificate?: string;
     clientKey?: string;
-}): FalkorDBTarget {
+}): FalkorDbTarget {
     return {
         host: normalized.host,
         port: normalized.port,
@@ -250,9 +250,9 @@ async function runConnectionTest(
         clientCertificate?: string;
         clientKey?: string;
     }
-): Promise<FalkorDBConnectionTestResult> {
+): Promise<FalkorDbConnectionTestResult> {
     try {
-        return await testFalkorDBConnection({
+        return await testFalkorDbConnection({
             target: buildTarget(normalized, credentials),
             graphName: normalized.graphName,
         });
@@ -277,13 +277,13 @@ async function runConnectionTest(
 
 /** Run the verification flow for an unsaved payload (nothing is persisted). */
 export async function testConnectionPayload(
-    input: FalkorDBConnectionInput
-): Promise<FalkorDBConnectionTestResult> {
+    input: FalkorDbConnectionInput
+): Promise<FalkorDbConnectionTestResult> {
     const normalized = normalizeConnectionInput(input);
     return runConnectionTest(normalized);
 }
 
-export async function listConnections(customerId: string): Promise<FalkorDBConnectionPublic[]> {
+export async function listConnections(customerId: string): Promise<FalkorDbConnectionPublic[]> {
     const rows = await prisma.falkorDBConnection.findMany({
         where: { customerId },
         orderBy: { createdAt: 'desc' },
@@ -294,7 +294,7 @@ export async function listConnections(customerId: string): Promise<FalkorDBConne
 export async function getConnection(
     customerId: string,
     id: string
-): Promise<FalkorDBConnectionPublic | null> {
+): Promise<FalkorDbConnectionPublic | null> {
     const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
     return row ? toPublicConnection(row) : null;
 }
@@ -345,8 +345,8 @@ async function storeSecrets(
  */
 export async function createConnection(
     customerId: string,
-    input: FalkorDBConnectionInput
-): Promise<{ connection: FalkorDBConnectionPublic | null; testResult: FalkorDBConnectionTestResult }> {
+    input: FalkorDbConnectionInput
+): Promise<{ connection: FalkorDbConnectionPublic | null; testResult: FalkorDbConnectionTestResult }> {
     const normalized = normalizeConnectionInput(input);
     const testResult = await runConnectionTest(normalized);
 
@@ -397,10 +397,10 @@ export async function createConnection(
 export async function updateConnection(
     customerId: string,
     id: string,
-    input: FalkorDBConnectionInput
-): Promise<FalkorDBConnectionPublic> {
+    input: FalkorDbConnectionInput
+): Promise<FalkorDbConnectionPublic> {
     const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
-    if (!row) throw new FalkorDBInputError('Connection not found');
+    if (!row) throw new FalkorDbInputError('Connection not found');
 
     const existing = toDomain(row);
     const normalized = normalizeConnectionInput(input, {
@@ -483,7 +483,7 @@ export async function updateConnection(
 /** Delete a connection and purge all of its secrets from the secret store. */
 export async function deleteConnection(customerId: string, id: string): Promise<void> {
     const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
-    if (!row) throw new FalkorDBInputError('Connection not found');
+    if (!row) throw new FalkorDbInputError('Connection not found');
 
     await prisma.falkorDBConnection.delete({ where: { id } });
     await deleteSecretsByPrefix(`falkordb/${id}/`);
@@ -494,9 +494,9 @@ export async function deleteConnection(customerId: string, id: string): Promise<
 export async function testSavedConnection(
     customerId: string,
     id: string
-): Promise<FalkorDBConnectionTestResult> {
+): Promise<FalkorDbConnectionTestResult> {
     const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
-    if (!row) throw new FalkorDBInputError('Connection not found');
+    if (!row) throw new FalkorDbInputError('Connection not found');
 
     const domain = toDomain(row);
     let credentials: {
@@ -568,12 +568,12 @@ export async function testSavedConnection(
  * data-plane service can build a client. The result must never be serialized
  * into a browser-facing response or written to logs/telemetry.
  */
-export async function resolveFalkorDBConnection(
+export async function resolveFalkorDbConnection(
     customerId: string,
     id: string
-): Promise<ResolvedFalkorDBConnection> {
+): Promise<ResolvedFalkorDbConnection> {
     const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
-    if (!row) throw new FalkorDBInputError('Connection not found');
+    if (!row) throw new FalkorDbInputError('Connection not found');
 
     const domain = toDomain(row);
     return {

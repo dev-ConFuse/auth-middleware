@@ -11,11 +11,11 @@
 // Core domain model
 // ============================================================================
 
-export type FalkorDBTopology = 'standalone' | 'sentinel' | 'cluster';
+export type FalkorDbTopology = 'standalone' | 'sentinel' | 'cluster';
 
-export type FalkorDBDeploymentType = 'cloud' | 'self_hosted' | 'byoc' | 'unknown';
+export type FalkorDbDeploymentType = 'cloud' | 'self_hosted' | 'byoc' | 'unknown';
 
-export type FalkorDBTestStatus = 'passed' | 'failed';
+export type FalkorDbTestStatus = 'passed' | 'failed';
 
 /**
  * Unified FalkorDB connection (Cloud / self-hosted / BYOC).
@@ -24,7 +24,7 @@ export type FalkorDBTestStatus = 'passed' | 'failed';
  * the application database; the actual password / certificates live in the
  * encrypted secret store (see services/secret-store.ts).
  */
-export interface FalkorDBConnection {
+export interface FalkorDbConnection {
     id: string;
     customerId: string;
 
@@ -42,8 +42,8 @@ export interface FalkorDBConnection {
     clientCertificateSecretRef?: string;
     clientKeySecretRef?: string;
 
-    topology?: FalkorDBTopology;
-    deploymentType?: FalkorDBDeploymentType;
+    topology?: FalkorDbTopology;
+    deploymentType?: FalkorDbDeploymentType;
 
     // --- additive operational fields (non-secret) ---
 
@@ -53,7 +53,7 @@ export interface FalkorDBConnection {
     sentinelMasterName?: string;
     status: 'active' | 'disabled';
     lastTestedAt?: string | Date | null;
-    lastTestStatus?: FalkorDBTestStatus | null;
+    lastTestStatus?: FalkorDbTestStatus | null;
     createdAt: string | Date;
     updatedAt: string | Date;
 }
@@ -69,7 +69,7 @@ export interface FalkorDBConnection {
  * `falkors://host:port`). Any credentials found in a URL are extracted into the
  * separate `username`/`password` fields and are never persisted as a URL.
  */
-export interface FalkorDBConnectionInput {
+export interface FalkorDbConnectionInput {
     name?: string;
 
     connectionUrl?: string;
@@ -90,8 +90,8 @@ export interface FalkorDBConnectionInput {
     clientCertificate?: string;
     clientKey?: string;
 
-    topology?: FalkorDBTopology;
-    deploymentType?: FalkorDBDeploymentType;
+    topology?: FalkorDbTopology;
+    deploymentType?: FalkorDbDeploymentType;
     sentinelMasterName?: string;
 
     /** Explicitly clear the stored password (rotation/removal). */
@@ -113,7 +113,7 @@ export interface FalkorDBConnectionInput {
  * boolean flags so clients can show "configured" state without ever receiving
  * the secret itself.
  */
-export interface FalkorDBConnectionPublic {
+export interface FalkorDbConnectionPublic {
     id: string;
     customerId: string;
     name: string;
@@ -131,13 +131,13 @@ export interface FalkorDBConnectionPublic {
     hasClientCertificate: boolean;
     hasClientKey: boolean;
 
-    topology?: FalkorDBTopology;
-    deploymentType?: FalkorDBDeploymentType;
+    topology?: FalkorDbTopology;
+    deploymentType?: FalkorDbDeploymentType;
     sentinelMasterName?: string;
 
     status: 'active' | 'disabled';
     lastTestedAt?: string | null;
-    lastTestStatus?: FalkorDBTestStatus | null;
+    lastTestStatus?: FalkorDbTestStatus | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -146,21 +146,21 @@ export interface FalkorDBConnectionPublic {
 // Connection test (verification flow) results
 // ============================================================================
 
-export type FalkorDBTestStepName =
+export type FalkorDbTestStepName =
     | 'connect'
     | 'authenticate'
     | 'ping'
     | 'falkordb'
     | 'graph';
 
-export interface FalkorDBTestStep {
-    name: FalkorDBTestStepName;
+export interface FalkorDbTestStep {
+    name: FalkorDbTestStepName;
     ok: boolean;
     message: string;
     durationMs: number;
 }
 
-export type FalkorDBErrorCode =
+export type FalkorDbErrorCode =
     | 'INVALID_CONFIG'
     | 'DNS_FAILURE'
     | 'CONNECTION_REFUSED'
@@ -174,16 +174,16 @@ export type FalkorDBErrorCode =
     | 'SECRET_ERROR'
     | 'UNKNOWN';
 
-export interface FalkorDBTestError {
-    code: FalkorDBErrorCode;
+export interface FalkorDbTestError {
+    code: FalkorDbErrorCode;
     /** Redacted, safe-to-display message. Never contains secrets. */
     message: string;
     hints: string[];
 }
 
-export interface FalkorDBConnectionTestResult {
+export interface FalkorDbConnectionTestResult {
     success: boolean;
-    steps: FalkorDBTestStep[];
+    steps: FalkorDbTestStep[];
     server?: {
         version?: string;
         graphCount?: number;
@@ -192,7 +192,7 @@ export interface FalkorDBConnectionTestResult {
         name: string;
         exists: boolean;
     };
-    error?: FalkorDBTestError;
+    error?: FalkorDbTestError;
     durationMs: number;
 }
 
@@ -205,8 +205,8 @@ export interface FalkorDBConnectionTestResult {
  * server-side to build clients — NEVER serialized into API responses meant
  * for browsers, logs or telemetry.
  */
-export interface ResolvedFalkorDBConnection {
-    connection: FalkorDBConnection;
+export interface ResolvedFalkorDbConnection {
+    connection: FalkorDbConnection;
     credentials: {
         password?: string;
         caCertificate?: string;

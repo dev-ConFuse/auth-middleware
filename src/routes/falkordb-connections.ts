@@ -23,12 +23,12 @@ import prisma from '../infra/db.js';
 import { logger } from '../utils/logger.js';
 import { safeEquals } from '../services/secret-store.js';
 import {
-    FalkorDBInputError,
+    FalkorDbInputError,
     createConnection,
     deleteConnection,
     getConnection,
     listConnections,
-    resolveFalkorDBConnection,
+    resolveFalkorDbConnection,
     testConnectionPayload,
     testSavedConnection,
     updateConnection,
@@ -46,7 +46,7 @@ async function resolveCustomerId(claims: Auth0Claims): Promise<string | null> {
 }
 
 function handleError(res: Response, error: unknown, context: string): void {
-    if (error instanceof FalkorDBInputError) {
+    if (error instanceof FalkorDbInputError) {
         void res.status(error.status).json({ error: error.message });
         return;
     }
@@ -143,7 +143,7 @@ falkordbConnectionsRouter.patch('/:id', requireAuth, async (req: AuthenticatedRe
         const connection = await updateConnection(customerId, String(req.params.id), req.body ?? {});
         res.json({ connection });
     } catch (error) {
-        if (error instanceof FalkorDBInputError && error.message === 'Connection not found') {
+        if (error instanceof FalkorDbInputError && error.message === 'Connection not found') {
             return void res.status(404).json({ error: error.message });
         }
         handleError(res, error, 'Failed to update connection');
@@ -162,7 +162,7 @@ falkordbConnectionsRouter.delete('/:id', requireAuth, async (req: AuthenticatedR
         await deleteConnection(customerId, String(req.params.id));
         res.json({ success: true });
     } catch (error) {
-        if (error instanceof FalkorDBInputError && error.message === 'Connection not found') {
+        if (error instanceof FalkorDbInputError && error.message === 'Connection not found') {
             return void res.status(404).json({ error: error.message });
         }
         handleError(res, error, 'Failed to delete connection');
@@ -181,7 +181,7 @@ falkordbConnectionsRouter.post('/:id/test', requireAuth, async (req: Authenticat
         const testResult = await testSavedConnection(customerId, String(req.params.id));
         res.json({ testResult });
     } catch (error) {
-        if (error instanceof FalkorDBInputError && error.message === 'Connection not found') {
+        if (error instanceof FalkorDbInputError && error.message === 'Connection not found') {
             return void res.status(404).json({ error: error.message });
         }
         handleError(res, error, 'Failed to test connection');
@@ -203,10 +203,10 @@ falkordbConnectionsRouter.post('/internal/:id/resolve', async (req: Authenticate
         const customerId = String(req.body?.customerId ?? '');
         if (!customerId) return void res.status(400).json({ error: 'customerId is required' });
 
-        const resolved = await resolveFalkorDBConnection(customerId, String(req.params.id));
+        const resolved = await resolveFalkorDbConnection(customerId, String(req.params.id));
         res.json({ resolved });
     } catch (error) {
-        if (error instanceof FalkorDBInputError && error.message === 'Connection not found') {
+        if (error instanceof FalkorDbInputError && error.message === 'Connection not found') {
             return void res.status(404).json({ error: error.message });
         }
         handleError(res, error, 'Failed to resolve connection');

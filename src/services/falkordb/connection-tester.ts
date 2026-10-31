@@ -15,39 +15,39 @@
  */
 
 import type {
-    FalkorDBConnectionTestResult,
-    FalkorDBErrorCode,
-    FalkorDBTestError,
-    FalkorDBTestStep,
-    FalkorDBTestStepName,
+    FalkorDbConnectionTestResult,
+    FalkorDbErrorCode,
+    FalkorDbTestError,
+    FalkorDbTestStep,
+    FalkorDbTestStepName,
 } from '../../types/falkordb.js';
 import { logger } from '../../utils/logger.js';
 import { redactSensitive } from '../../utils/redact.js';
-import { createFalkorClient, type FalkorDBClientHandle, type FalkorDBTarget } from './client.js';
-import { classifyFalkorDBError } from './error-classifier.js';
+import { createFalkorClient, type FalkorDbClientHandle, type FalkorDbTarget } from './client.js';
+import { classifyFalkorDbError } from './error-classifier.js';
 
 const OVERALL_TIMEOUT_MS = 30_000;
 
 interface TestFlowContext {
     /** Set once the client exists so the overall timeout can release the socket. */
-    client: FalkorDBClientHandle | null;
+    client: FalkorDbClientHandle | null;
 }
 
-export interface FalkorDBTestInput {
-    target: FalkorDBTarget;
+export interface FalkorDbTestInput {
+    target: FalkorDbTarget;
     /** Graph the customer wants to use. */
     graphName: string;
 }
 
-export async function testFalkorDBConnection(
-    input: FalkorDBTestInput
-): Promise<FalkorDBConnectionTestResult> {
+export async function testFalkorDbConnection(
+    input: FalkorDbTestInput
+): Promise<FalkorDbConnectionTestResult> {
     const startedAt = Date.now();
-    const steps: FalkorDBTestStep[] = [];
+    const steps: FalkorDbTestStep[] = [];
     const ctx: TestFlowContext = { client: null };
 
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    const overallTimeout = new Promise<FalkorDBConnectionTestResult>((resolve) => {
+    const overallTimeout = new Promise<FalkorDbConnectionTestResult>((resolve) => {
         timeoutHandle = setTimeout(() => {
             // Release the socket so the abandoned flow settles quickly and its
             // result (discarded by the race below) is produced promptly.
@@ -81,16 +81,16 @@ export async function testFalkorDBConnection(
 }
 
 async function runTestFlow(
-    input: FalkorDBTestInput,
+    input: FalkorDbTestInput,
     startedAt: number,
-    steps: FalkorDBTestStep[],
+    steps: FalkorDbTestStep[],
     ctx: TestFlowContext
-): Promise<FalkorDBConnectionTestResult> {
+): Promise<FalkorDbConnectionTestResult> {
     const { target, graphName } = input;
 
     const stepStart = (): number => Date.now();
     const pushStep = (
-        name: FalkorDBTestStepName,
+        name: FalkorDbTestStepName,
         ok: boolean,
         message: string,
         from: number
@@ -110,10 +110,10 @@ async function runTestFlow(
     }
 
     function failure(
-        code: FalkorDBErrorCode,
+        code: FalkorDbErrorCode,
         message: string,
         hints: string[]
-    ): FalkorDBConnectionTestResult {
+    ): FalkorDbConnectionTestResult {
         return {
             success: false,
             steps,
@@ -122,7 +122,7 @@ async function runTestFlow(
         };
     }
 
-    function finishWithError(error: FalkorDBTestError): FalkorDBConnectionTestResult {
+    function finishWithError(error: FalkorDbTestError): FalkorDbConnectionTestResult {
         logger.warn('[FALKORDB-TEST] Connection test failed', {
             code: error.code,
             message: error.message,
@@ -136,7 +136,7 @@ async function runTestFlow(
         };
     }
 
-    let client: FalkorDBClientHandle | null = null;
+    let client: FalkorDbClientHandle | null = null;
     try {
         client = createFalkorClient(target);
         ctx.client = client;
@@ -149,7 +149,7 @@ async function runTestFlow(
             await client.raw.connect();
             pushStep('connect', true, `Connected to ${target.host}:${target.port}`, t);
         } catch (error) {
-            const classified = classifyFalkorDBError(error, 'Connection failed');
+            const classified = classifyFalkorDbError(error, 'Connection failed');
             if (classified.code === 'AUTH_FAILED') {
                 // Transport worked — the server closed us during auth.
                 pushStep('connect', true, `Connected to ${target.host}:${target.port}`, t);
@@ -183,7 +183,7 @@ async function runTestFlow(
                 pushStep('authenticate', true, 'No credentials supplied (anonymous access)', t);
             }
         } catch (error) {
-            const classified = classifyFalkorDBError(error, 'Authentication failed');
+            const classified = classifyFalkorDbError(error, 'Authentication failed');
             pushStep('authenticate', false, classified.message, t);
             return finishWithError(
                 classified.code === 'UNKNOWN' ? { ...classified, code: 'AUTH_FAILED' } : classified
@@ -198,7 +198,7 @@ async function runTestFlow(
             await client.ping();
             pushStep('ping', true, 'PING succeeded', t);
         } catch (error) {
-            const classified = classifyFalkorDBError(error, 'PING failed');
+            const classified = classifyFalkorDbError(error, 'PING failed');
             if (classified.code === 'AUTH_FAILED' && !hasPassword) {
                 // The server requires credentials we were not given — attribute
                 // the failure to the authenticate step for clearer UX.
@@ -230,7 +230,7 @@ async function runTestFlow(
                 t
             );
         } catch (error) {
-            const classified = classifyFalkorDBError(error, 'FalkorDB verification failed');
+            const classified = classifyFalkorDbError(error, 'FalkorDB verification failed');
             pushStep('falkordb', false, classified.message, t);
             return finishWithError(
                 classified.code === 'UNKNOWN' ? { ...classified, code: 'NOT_FALKORDB' } : classified
@@ -275,7 +275,7 @@ async function runTestFlow(
                 durationMs: Date.now() - startedAt,
             };
         } catch (error) {
-            const classified = classifyFalkorDBError(
+            const classified = classifyFalkorDbError(
                 error,
                 `Graph "${graphName}" verification failed`
             );

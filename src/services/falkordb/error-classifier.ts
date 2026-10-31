@@ -9,7 +9,7 @@
  */
 
 import { redactSensitive } from '../../utils/redact.js';
-import type { FalkorDBErrorCode, FalkorDBTestError } from '../../types/falkordb.js';
+import type { FalkorDbErrorCode, FalkorDbTestError } from '../../types/falkordb.js';
 
 const NETWORK_HINTS = [
     'If this FalkorDB is not publicly reachable, pick one: (1) expose a public endpoint and allowlist ConFuse egress IPs in your firewall/security group, (2) site-to-site VPN, (3) VPC/network peering or private link, or (4) a customer-side connector/agent for highly private deployments.',
@@ -21,7 +21,7 @@ const LEAST_PRIVILEGE_HINTS = [
     'Confirm the ACL user is allowed to access the requested graph name (key pattern) and that `AUTH` is permitted for it.',
 ];
 
-function classifyCode(message: string): FalkorDBErrorCode {
+function classifyCode(message: string): FalkorDbErrorCode {
     const m = message.toLowerCase();
     if (/enotfound|eai_again|getaddrinfo|dns/.test(m)) return 'DNS_FAILURE';
     if (/econnrefused/.test(m)) return 'CONNECTION_REFUSED';
@@ -45,7 +45,7 @@ function classifyCode(message: string): FalkorDBErrorCode {
  * `context` is a short prefix like "Failed to connect" — it must not contain
  * secrets; it is redacted anyway as a safety net.
  */
-export function classifyFalkorDBError(error: unknown, context: string): FalkorDBTestError {
+export function classifyFalkorDbError(error: unknown, context: string): FalkorDbTestError {
     const rawMessage =
         error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
     const message = redactSensitive(rawMessage);

@@ -19,9 +19,12 @@ model User {
   accounts             Account[]
   apiKeys              ApiKey[]
   sources              Source[]
+  createdSources       Source[]          @relation("SourceCreator")
   preferences          UserPreference?
   billingUsage         BillingUsage?
   falkorDBConnections  FalkorDBConnection[]
+  workspaceMembers     WorkspaceMember[]
+  invitedMembers       WorkspaceMember[] @relation("InvitedBy")
   onboardingCompleted        Boolean              @default(false) @map("onboarding_completed")
   userIntent                 String?              @map("user_intent")
   dashboardPreset            String?              @map("dashboard_preset")
@@ -38,6 +41,8 @@ model User {
 model Source {
   id          String    @id @default(uuid()) @db.Uuid
   userId      String    @map("user_id") @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  createdBy   String    @map("created_by") @db.Uuid
   type        String    @db.VarChar(50) // 'repo', 'doc', 'log_app'
   name        String    @db.VarChar(255)
   url         String?   @db.VarChar(500)
@@ -49,8 +54,12 @@ model Source {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator     User      @relation("SourceCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([workspaceId])
+  @@index([createdBy])
   @@index([type])
   @@index([provider])
   @@index([externalId])
@@ -155,7 +164,8 @@ model FalkorDBConnection {
   createdAt                   DateTime  @default(now()) @map("created_at")
   updatedAt                   DateTime  @updatedAt @map("updated_at")
 
-  customer User @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer User   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  graphs   Graph[]
 
   @@index([customerId])
   @@map("falkordb_connections")
@@ -183,6 +193,105 @@ model Secret {
 
   @@index([ownerId])
   @@map("secrets")
+}
+
+// ============================================================================
+// Workspace models
+// ============================================================================
+
+model Workspace {
+  id              String            @id @db.VarChar(255)
+  name            String            @db.VarChar(255)
+  activeGraphId   String?           @map("active_graph_id") @db.VarChar(255)
+  settings        Json?             @default("{}")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  members         WorkspaceMember[]
+  sources         Source[]
+  graphs          Graph[]
+  activeGraph     Graph?            @relation("ActiveGraph", fields: [activeGraphId], references: [id], onDelete: SetNull)
+  
+  @@index([activeGraphId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.VarChar(255)
+  role         String    @db.VarChar(20) // 'ADMIN' | 'MEMBER'
+  joinedAt     DateTime  @default(now()) @map("joined_at")
+  invitedBy    String?   @map("invited_by") @db.Uuid
+  
+  // Relations
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inviter      User?     @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: SetNull)
+  
+  @@unique([userId, workspaceId])
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([role])
+  @@map("workspace_members")
+}
+
+model Graph {
+  id                    String      @id @db.VarChar(255)
+  workspaceId           String      @map("workspace_id") @db.VarChar(255)
+  name                  String      @db.VarChar(255)
+  type                  String      @db.VarChar(20) // 'CONFUSE' | 'BYODB'
+  status                String      @default("ACTIVE") @db.VarChar(20) // 'ACTIVE' | 'PROVISIONING' | 'FAILED' | 'DELETED'
+  falkordbConnectionId  String?     @map("falkordb_connection_id") @db.Uuid
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+  deletedAt             DateTime?   @map("deleted_at")
+  
+  // Relations
+  workspace             Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  falkordbConnection    FalkorDBConnection? @relation(fields: [falkordbConnectionId], references: [id], onDelete: SetNull)
+  activeInWorkspaces    Workspace[] @relation("ActiveGraph")
+  
+  @@index([workspaceId])
+  @@index([type])
+  @@index([status])
+  @@index([falkordbConnectionId])
+  @@map("graphs")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  workspaceId  String?  @map("workspace_id") @db.VarChar(255)
+  action       String   @db.VarChar(100)
+  entityType   String   @map("entity_type") @db.VarChar(50)
+  entityId     String?  @map("entity_id") @db.VarChar(255)
+  metadata     Json?
+  ipAddress    String?  @map("ip_address") @db.VarChar(50)
+  userAgent    String?  @map("user_agent") @db.VarChar(500)
+  timestamp    DateTime @default(now())
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([action])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model PendingInvitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  email       String    @db.VarChar(255)
+  workspaceId String    @map("workspace_id") @db.VarChar(255)
+  invitedBy   String    @map("invited_by") @db.Uuid
+  token       String    @unique @db.VarChar(255)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  expiresAt   DateTime? @map("expires_at")
+
+  @@index([email])
+  @@index([workspaceId])
+  @@index([token])
+  @@map("pending_invitations")
 }
 
 // These tables are managed by the Rust processing services (doc-uni-proc, repo-uni-proc)

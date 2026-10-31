@@ -22,7 +22,7 @@ model User {
   createdSources       Source[]          @relation("SourceCreator")
   preferences          UserPreference?
   billingUsage         BillingUsage?
-  falkorDBConnections  FalkorDBConnection[]
+  falkorDbConnections  FalkorDbConnection[]
   workspaceMembers     WorkspaceMember[]
   invitedMembers       WorkspaceMember[] @relation("InvitedBy")
   onboardingCompleted        Boolean              @default(false) @map("onboarding_completed")
@@ -142,7 +142,7 @@ model BillingUsage {
 // certificate material live in the `secrets` table (AES-256-GCM encrypted),
 // never in plaintext application storage.
 
-model FalkorDBConnection {
+model FalkorDbConnection {
   id                          String    @id @default(uuid()) @db.Uuid
   customerId                  String    @map("customer_id") @db.Uuid
   name                        String    @db.VarChar(255)
@@ -243,20 +243,20 @@ model Graph {
   name                  String      @db.VarChar(255)
   type                  String      @db.VarChar(20) // 'CONFUSE' | 'BYODB'
   status                String      @default("ACTIVE") @db.VarChar(20) // 'ACTIVE' | 'PROVISIONING' | 'FAILED' | 'DELETED'
-  falkordbConnectionId  String?     @map("falkordb_connection_id") @db.Uuid
+  falkorDbConnectionId  String?     @map("falkordb_connection_id") @db.Uuid
   createdAt             DateTime    @default(now()) @map("created_at")
   updatedAt             DateTime    @updatedAt @map("updated_at")
   deletedAt             DateTime?   @map("deleted_at")
   
   // Relations
   workspace             Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  falkordbConnection    FalkorDBConnection? @relation(fields: [falkordbConnectionId], references: [id], onDelete: SetNull)
+  falkorDbConnection    FalkorDbConnection? @relation(fields: [falkorDbConnectionId], references: [id], onDelete: SetNull)
   activeInWorkspaces    Workspace[] @relation("ActiveGraph")
   
   @@index([workspaceId])
   @@index([type])
   @@index([status])
-  @@index([falkordbConnectionId])
+  @@index([falkorDbConnectionId])
   @@map("graphs")
 }
 
@@ -296,7 +296,7 @@ model PendingInvitation {
 
 // These tables are managed by the Rust processing services (doc-uni-proc, repo-uni-proc)
 // and are included here for reference only. They are not managed by Prisma migrations.
-model file_metadata {
+model FileMetadata {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   source_id    String    @db.VarChar(255)
   filename     String    @db.VarChar(255)
@@ -307,11 +307,12 @@ model file_metadata {
   processed_at DateTime? @default(now()) @db.Timestamptz(6)
 
   @@unique([source_id, filename])
+  @@map("file_metadata")
   @@index([source_id], map: "idx_file_metadata_source_id")
 }
 
 
-model chunk_snapshot {
+model ChunkSnapshot {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   source_id       String    @db.VarChar(255)
   filename        String    @db.VarChar(255)
@@ -324,6 +325,7 @@ model chunk_snapshot {
   last_indexed_at DateTime? @db.Timestamptz(6)
   tombstone       Boolean   @default(false)
 
+  @@map("chunk_snapshot")
   @@index([source_id, filename], map: "idx_chunk_snapshot_source_file")
   @@index([chunk_key], map: "idx_chunk_snapshot_key")
 }

@@ -13,7 +13,7 @@ import { config } from './config.js';
 import authRouter from './auth.js';
 import { healthRoutes, userRoutes } from './routes/index.js';
 import billingRouter from './routes/billing.js';
-import { falkordbConnectionsRouter } from './routes/falkordb-connections.js';
+import { falkorDbConnectionsRouter } from './routes/falkordb-connections.js';
 
 
 import { randomUUID } from 'crypto';
@@ -159,7 +159,7 @@ app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/billing', billingRouter);
 
 // Customer-owned FalkorDB Connections API
-app.use('/api/v1/falkordb-connections', falkordbConnectionsRouter);
+app.use('/api/v1/falkordb-connections', falkorDbConnectionsRouter);
 
 
 // User Stats (Dashboard mock data)

@@ -284,7 +284,7 @@ export async function testConnectionPayload(
 }
 
 export async function listConnections(customerId: string): Promise<FalkorDbConnectionPublic[]> {
-    const rows = await prisma.falkorDBConnection.findMany({
+    const rows = await prisma.falkorDbConnection.findMany({
         where: { customerId },
         orderBy: { createdAt: 'desc' },
     });
@@ -295,7 +295,7 @@ export async function getConnection(
     customerId: string,
     id: string
 ): Promise<FalkorDbConnectionPublic | null> {
-    const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
+    const row = await prisma.falkorDbConnection.findFirst({ where: { id, customerId } });
     return row ? toPublicConnection(row) : null;
 }
 
@@ -361,7 +361,7 @@ export async function createConnection(
     const id = randomUUID();
     const secretRefs = await storeSecrets(id, customerId, normalized);
 
-    const row = await prisma.falkorDBConnection.create({
+    const row = await prisma.falkorDbConnection.create({
         data: {
             id,
             customerId,
@@ -399,7 +399,7 @@ export async function updateConnection(
     id: string,
     input: FalkorDbConnectionInput
 ): Promise<FalkorDbConnectionPublic> {
-    const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
+    const row = await prisma.falkorDbConnection.findFirst({ where: { id, customerId } });
     if (!row) throw new FalkorDbInputError('Connection not found');
 
     const existing = toDomain(row);
@@ -475,17 +475,17 @@ export async function updateConnection(
         }
     }
 
-    const updated = await prisma.falkorDBConnection.update({ where: { id }, data });
+    const updated = await prisma.falkorDbConnection.update({ where: { id }, data });
     logger.info('[FALKORDB-CONNECTIONS] Connection updated', { connectionId: id });
     return toPublicConnection(updated);
 }
 
 /** Delete a connection and purge all of its secrets from the secret store. */
 export async function deleteConnection(customerId: string, id: string): Promise<void> {
-    const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
+    const row = await prisma.falkorDbConnection.findFirst({ where: { id, customerId } });
     if (!row) throw new FalkorDbInputError('Connection not found');
 
-    await prisma.falkorDBConnection.delete({ where: { id } });
+    await prisma.falkorDbConnection.delete({ where: { id } });
     await deleteSecretsByPrefix(`falkordb/${id}/`);
     logger.info('[FALKORDB-CONNECTIONS] Connection deleted', { connectionId: id });
 }
@@ -495,7 +495,7 @@ export async function testSavedConnection(
     customerId: string,
     id: string
 ): Promise<FalkorDbConnectionTestResult> {
-    const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
+    const row = await prisma.falkorDbConnection.findFirst({ where: { id, customerId } });
     if (!row) throw new FalkorDbInputError('Connection not found');
 
     const domain = toDomain(row);
@@ -553,7 +553,7 @@ export async function testSavedConnection(
     );
     const testResult = await runConnectionTest(normalized, credentials);
 
-    await prisma.falkorDBConnection.update({
+    await prisma.falkorDbConnection.update({
         where: { id },
         data: {
             lastTestedAt: new Date(),
@@ -572,7 +572,7 @@ export async function resolveFalkorDbConnection(
     customerId: string,
     id: string
 ): Promise<ResolvedFalkorDbConnection> {
-    const row = await prisma.falkorDBConnection.findFirst({ where: { id, customerId } });
+    const row = await prisma.falkorDbConnection.findFirst({ where: { id, customerId } });
     if (!row) throw new FalkorDbInputError('Connection not found');
 
     const domain = toDomain(row);

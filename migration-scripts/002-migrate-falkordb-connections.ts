@@ -1,12 +1,12 @@
-﻿import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { generateGraphId } from '../src/services/id-generator.js';
 
 const prisma = new PrismaClient();
 
-async function migrateFalkorDBConnections() {
+async function migrateFalkorDbConnections() {
   console.log('Starting FalkorDB connection to Graph migration...');
   
-  const connections = await prisma.falkorDBConnection.findMany({
+  const connections = await prisma.falkorDbConnection.findMany({
     include: {
       customer: {
         include: {
@@ -41,7 +41,7 @@ async function migrateFalkorDBConnections() {
       const existingGraph = await prisma.graph.findFirst({
         where: {
           workspaceId: workspace.id,
-          falkordbConnectionId: connection.id,
+          falkorDbConnectionId: connection.id,
         },
       });
       
@@ -62,7 +62,7 @@ async function migrateFalkorDBConnections() {
             name: connection.name,
             type: 'BYODB',
             status: 'ACTIVE',
-            falkordbConnectionId: connection.id,
+            falkorDbConnectionId: connection.id,
           },
         });
         
@@ -85,7 +85,7 @@ async function migrateFalkorDBConnections() {
   console.log(`\nMigration complete: ${migrated} migrated, ${skipped} skipped`);
 }
 
-migrateFalkorDBConnections()
+migrateFalkorDbConnections()
   .then(() => {
     console.log('Migration successful');
     process.exit(0);

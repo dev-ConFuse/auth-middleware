@@ -34,7 +34,7 @@ import {
     updateConnection,
 } from '../services/falkordb/connections.js';
 
-export const falkordbConnectionsRouter = Router();
+export const falkorDbConnectionsRouter = Router();
 
 /** Resolve the internal user ID from the verified Auth0 subject. */
 async function resolveCustomerId(claims: Auth0Claims): Promise<string | null> {
@@ -59,7 +59,7 @@ function handleError(res: Response, error: unknown, context: string): void {
 /**
  * List all FalkorDB connections for the authenticated user.
  */
-falkordbConnectionsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const customerId = await resolveCustomerId(claims);
@@ -75,7 +75,7 @@ falkordbConnectionsRouter.get('/', requireAuth, async (req: AuthenticatedRequest
 /**
  * Test an unsaved connection payload. Nothing is persisted.
  */
-falkordbConnectionsRouter.post('/test', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.post('/test', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const customerId = await resolveCustomerId(claims);
@@ -91,7 +91,7 @@ falkordbConnectionsRouter.post('/test', requireAuth, async (req: AuthenticatedRe
 /**
  * Get a single connection (public DTO — no secret values).
  */
-falkordbConnectionsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const customerId = await resolveCustomerId(claims);
@@ -110,7 +110,7 @@ falkordbConnectionsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequ
  * opted into `allowUnverified`, nothing is saved and the test result (with
  * actionable error codes/hints) is returned with HTTP 422.
  */
-falkordbConnectionsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const customerId = await resolveCustomerId(claims);
@@ -134,7 +134,7 @@ falkordbConnectionsRouter.post('/', requireAuth, async (req: AuthenticatedReques
  * `clearPassword` / `clearCaCertificate` / `clearClientCertificate` /
  * `clearClientKey` to remove.
  */
-falkordbConnectionsRouter.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const customerId = await resolveCustomerId(claims);
@@ -153,7 +153,7 @@ falkordbConnectionsRouter.patch('/:id', requireAuth, async (req: AuthenticatedRe
 /**
  * Delete a connection and purge its secrets.
  */
-falkordbConnectionsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const customerId = await resolveCustomerId(claims);
@@ -172,7 +172,7 @@ falkordbConnectionsRouter.delete('/:id', requireAuth, async (req: AuthenticatedR
 /**
  * Re-test a saved connection and record the outcome.
  */
-falkordbConnectionsRouter.post('/:id/test', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.post('/:id/test', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const customerId = await resolveCustomerId(claims);
@@ -193,7 +193,7 @@ falkordbConnectionsRouter.post('/:id/test', requireAuth, async (req: Authenticat
  * credentials. Guarded by the internal API key with a constant-time compare.
  * Never expose this endpoint through the frontend proxy.
  */
-falkordbConnectionsRouter.post('/internal/:id/resolve', async (req: AuthenticatedRequest, res: Response) => {
+falkorDbConnectionsRouter.post('/internal/:id/resolve', async (req: AuthenticatedRequest, res: Response) => {
     const providedKey = String(req.header('x-internal-api-key') ?? '');
     if (!providedKey || !safeEquals(providedKey, config.internalApiKey)) {
         return void res.status(401).json({ error: 'Invalid internal API key' });

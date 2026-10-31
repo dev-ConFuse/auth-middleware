@@ -1,4 +1,4 @@
-﻿import { prisma } from '../infra/db.js';
+import { prisma } from '../infra/db.js';
 import { generateGraphId } from './id-generator.js';
 import { encryptSecret, decryptSecret } from './secret-store.js';
 
@@ -94,7 +94,7 @@ export async function createBYODBGraph(input: CreateBYODBGraphInput) {
     );
   }
   
-  const connection = await prisma.falkorDBConnection.create({
+  const connection = await prisma.falkorDbConnection.create({
     data: {
       customerId: input.userId,
       name: input.name,
@@ -119,7 +119,7 @@ export async function createBYODBGraph(input: CreateBYODBGraphInput) {
       name: input.name,
       type: 'BYODB',
       status: 'ACTIVE',
-      falkordbConnectionId: connection.id,
+      falkorDbConnectionId: connection.id,
     },
   });
   
@@ -197,9 +197,9 @@ export async function deleteGraph(
       });
     }
     
-    if (graph.falkordbConnectionId) {
-      await tx.falkorDBConnection.delete({
-        where: { id: graph.falkordbConnectionId },
+    if (graph.falkorDbConnectionId) {
+      await tx.falkorDbConnection.delete({
+        where: { id: graph.falkorDbConnectionId },
       });
     }
   });
@@ -214,7 +214,7 @@ export async function listWorkspaceGraphs(workspaceId: string) {
       deletedAt: null,
     },
     include: {
-      falkordbConnection: {
+      falkorDbConnection: {
         select: {
           id: true,
           name: true,

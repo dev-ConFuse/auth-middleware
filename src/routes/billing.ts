@@ -1,5 +1,12 @@
 /**
  * ConFuse Auth Middleware - Billing & Subscription Routes
+ *
+ * Mounted at /api/v1/billing (see index.ts): public plans catalogue,
+ * authenticated subscription/usage + upgrade + customer-portal endpoints,
+ * a webhook stub (no payment provider wired yet), and internal count-update
+ * endpoints (x-api-key) called by the data connectors when repos/docs are
+ * added or removed. Tier limits themselves live in services/billing.ts
+ * (TIER_CONFIGS).
  */
 
 import { Router, type Request, type Response } from 'express';

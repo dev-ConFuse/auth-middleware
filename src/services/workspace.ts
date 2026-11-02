@@ -1,4 +1,14 @@
-﻿import { prisma } from '../infra/db.js';
+﻿/**
+ * ConFuse Auth Middleware - Workspace & Membership Service (workspace-byodb spec)
+ *
+ * Workspaces group users (ADMIN / MEMBER roles) and own the graphs registered
+ * in `services/graph.ts`. Invites for unknown emails are stored as expiring
+ * pending-invitation tokens (7 days).
+ *
+ * Status: implemented per .kiro/specs/workspace-byodb-architecture but not
+ * yet exposed over HTTP routes.
+ */
+import { prisma } from '../infra/db.js';
 import { generateWorkspaceId } from './id-generator.js';
 
 export interface CreateWorkspaceInput {
@@ -11,6 +21,7 @@ export interface UpdateWorkspaceInput {
   settings?: Record<string, any>;
 }
 
+/** Create a workspace and make the creating user its ADMIN (single transaction). */
 export async function createWorkspace(input: CreateWorkspaceInput) {
   const workspaceId = generateWorkspaceId();
   
@@ -34,6 +45,7 @@ export async function createWorkspace(input: CreateWorkspaceInput) {
   });
 }
 
+/** Fetch a workspace (members, graphs, active graph) — throws unless the user is a member. */
 export async function getWorkspace(workspaceId: string, userId: string) {
   const member = await prisma.workspaceMember.findUnique({
     where: {
@@ -70,6 +82,7 @@ export async function getWorkspace(workspaceId: string, userId: string) {
   });
 }
 
+/** List every workspace the user belongs to, with their role and member count. */
 export async function listUserWorkspaces(userId: string) {
   const memberships = await prisma.workspaceMember.findMany({
     where: { userId },
@@ -93,6 +106,7 @@ export async function listUserWorkspaces(userId: string) {
   }));
 }
 
+/** Rename / reconfigure a workspace. ADMIN only. */
 export async function updateWorkspace(
   workspaceId: string,
   userId: string,
@@ -114,6 +128,7 @@ export async function updateWorkspace(
   });
 }
 
+/** Delete a workspace. ADMIN only — related rows go with it via FK cascade. */
 export async function deleteWorkspace(workspaceId: string, userId: string) {
   const member = await prisma.workspaceMember.findUnique({
     where: {
@@ -130,6 +145,10 @@ export async function deleteWorkspace(workspaceId: string, userId: string) {
   });
 }
 
+/**
+ * Invite by email: existing users join immediately (MEMBER); unknown emails
+ * get a 7-day pending-invitation token. ADMIN only.
+ */
 export async function inviteMember(
   workspaceId: string,
   adminId: string,
@@ -188,6 +207,7 @@ export async function inviteMember(
   });
 }
 
+/** Remove a member (or self). ADMIN only; the last remaining admin cannot be removed. */
 export async function removeMember(
   workspaceId: string,
   adminId: string,

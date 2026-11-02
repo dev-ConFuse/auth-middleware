@@ -1,3 +1,12 @@
+/**
+ * ConFuse Auth Middleware - Database Layer (Prisma + pg driver adapter)
+ *
+ * Owns the PrismaClient singleton, transient-failure classification
+ * (`isDatabaseUnavailableError`), retry policy (`withDbRetry`) and the bounded
+ * `/health` probe (`probeDatabaseHealth`). Routes map connectivity failures to
+ * 503 instead of misleading 500s so clients retry instead of treating the
+ * service as broken.
+ */
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';

@@ -1,5 +1,9 @@
 /**
- * ConFuse Auth Middleware - Type Definitions
+ * ConFuse Auth Middleware - Shared Type Definitions
+ *
+ * Hand-written wire/API projections shared across routes, services and the
+ * gRPC layer. Prisma model types come from `@prisma/client`; these are the
+ * contracts layered on top of them.
  */
 
 import type { Request } from 'express';
@@ -38,6 +42,12 @@ export interface UserProfile {
     onboardingCompleted: boolean;
     userIntent: string | null;
     dashboardPreset: string | null;
+    /**
+     * NOTE (known casing mismatch): this projection emits `subscriptionTier`
+     * (camelCase) while the frontend reads `user.subscription_tier`
+     * (snake_case) from auth responses. Documented deliberately — pick one
+     * casing when the profile contract is next revisited.
+     */
     subscriptionTier: string;
     subscriptionStatus?: string | null;
 }
@@ -62,7 +72,13 @@ export interface Auth0Claims {
     picture?: string;
     permissions?: string[];
     roles?: string[]; // Augmented by middleware
+    /**
+     * camelCase variant matching Prisma `User.subscriptionTier` and the
+     * `toProfile()` projection. NOTE: the frontend currently reads the
+     * snake_case key from auth responses — see the casing note on `UserProfile`.
+     */
     subscriptionTier?: string;
+    /** Subscription tier on the wire (gRPC `subscription_tier`, frontend `user.subscription_tier`); read by the rate limiter. */
     subscription_tier?: string;
     [key: string]: unknown;
 }
@@ -95,18 +111,6 @@ export interface TokenVerifyResponse {
     claims?: Auth0Claims;
     subscription_tier?: string;
     error?: string;
-}
-
-// ============================================================================
-// Cache Types
-// ============================================================================
-
-export interface CacheStats {
-    hits: number;
-    misses: number;
-    hitRate: number;
-    size: number;
-    capacity: number;
 }
 
 

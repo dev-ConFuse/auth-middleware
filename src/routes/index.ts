@@ -1,6 +1,10 @@
 /**
- * Consolidated routes for auth-middleware
- * Merges health and onboarding routes to reduce file count
+ * ConFuse Auth Middleware - Health & User Routes
+ *
+ * Consolidates health and onboarding/user routes to reduce file count:
+ *   healthRouter — GET / (liveness) and GET /health (bounded DB probe)
+ *   userRouter   — GET/POST /onboarding, DELETE / (account deletion)
+ * Mounted at / and /api/v1/user respectively (see index.ts).
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -10,13 +14,13 @@ import { logger } from '../utils/logger.js';
 import type { AuthenticatedRequest, Auth0Claims } from '../types/index.js';
 
 // Health routes
-const healthRoutes = Router();
+const healthRouter = Router();
 
-healthRoutes.get('/', (_req: Request, res: Response) => {
+healthRouter.get('/', (_req: Request, res: Response) => {
     res.status(200).send('OK');
 });
 
-healthRoutes.get('/health', async (_req: Request, res: Response) => {
+healthRouter.get('/health', async (_req: Request, res: Response) => {
     // Bounded probe: /health is a liveness endpoint (Docker HEALTHCHECK 10 s,
     // LB probes, test harness 3 s) — it must answer even when the DB connect
     // is slow, reporting 'timeout' instead of blocking the request.
@@ -31,9 +35,9 @@ healthRoutes.get('/health', async (_req: Request, res: Response) => {
 });
 
 // User routes
-const userRoutes = Router();
+const userRouter = Router();
 
-userRoutes.get('/onboarding', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+userRouter.get('/onboarding', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const user = await prisma.user.findUnique({
@@ -60,7 +64,7 @@ userRoutes.get('/onboarding', requireAuth, async (req: AuthenticatedRequest, res
     }
 });
 
-userRoutes.post('/onboarding', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+userRouter.post('/onboarding', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         const { userIntent, dashboardPreset, onboardingCompleted } = req.body;
@@ -89,7 +93,7 @@ userRoutes.post('/onboarding', requireAuth, async (req: AuthenticatedRequest, re
     }
 });
 
-userRoutes.delete('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+userRouter.delete('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
         const claims = req.user as Auth0Claims;
         
@@ -117,4 +121,4 @@ userRoutes.delete('/', requireAuth, async (req: AuthenticatedRequest, res: Respo
     }
 });
 
-export { healthRoutes, userRoutes };
+export { healthRouter, userRouter };

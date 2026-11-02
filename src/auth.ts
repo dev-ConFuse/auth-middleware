@@ -1,8 +1,19 @@
 /**
  * ConFuse Auth Middleware - Complete Authentication System
- * 
+ *
  * Consolidated authentication, OAuth, and token management
  * Merged from: services/auth0.ts, services/oauth.ts, middleware/auth.ts, routes/auth.ts
+ *
+ * Module map (sections below, in file order):
+ *   1. OAuth state management (OAuthStateService) — PKCE + state for the
+ *      direct provider flows (GitHub, GitLab, Bitbucket, Microsoft, Dropbox, …)
+ *   2. Auth0 token management — verifyAuth0Token, extractRoles,
+ *      Auth0ManagementClient (Management API for identity sync)
+ *   3. Authentication middleware — requireAuth, used by every protected route
+ *   4. Auth routes (authRouter) — /login, /me, /verify, /validate,
+ *      /validate-api-key, /oauth/url, /oauth/exchange, /connections*,
+ *      /internal/tokens. Mounted twice in index.ts (/api/auth + legacy /auth).
+ *   5. Provider token refresh — refreshTokenIfNeeded (shared with infra/grpc.ts)
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -175,7 +186,9 @@ function getJWKS() {
 }
 
 /**
- * Hash token for cache key
+ * Hash a bearer token into a short cache key (djb2-xor, base36).
+ * NOT cryptographic — it only keys the in-memory token cache. For credential
+ * comparison use `services/secret-store.ts#safeEquals` (constant-time).
  */
 export function hashToken(token: string): string {
     let hash = 5381;
@@ -436,10 +449,6 @@ function sendConnectionNotFound(res: Response, provider: string) {
     });
 }
 
-function sendInvalidApiKey(res: Response) {
-    res.status(403).json({ error: 'Invalid API key' });
-}
-
 /**
  * Resolve provider aliases for OneDrive/Microsoft.
  * The account may be stored under any of these provider names depending
@@ -459,7 +468,7 @@ export function getProviderAliases(provider: string): string[] {
 export const authRouter = Router();
 
 // Initialize OAuth state service
-export const oAuthStateService = new OAuthStateService();
+export const oauthStateService = new OAuthStateService();
 
 /**
  * POST /auth/login
@@ -727,8 +736,11 @@ authRouter.post('/validate-api-key', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /internal/tokens
- * Internal endpoint for fetching tokens
+ * POST /auth/internal/tokens
+ * Internal endpoint for fetching connected-provider tokens, called by
+ * data-plane services with the internal API key (x-api-key). Returns the
+ * (refreshed) access token plus the stored refresh token for a user's
+ * provider connection. No user JWT is involved — protect the key.
  */
 authRouter.post('/internal/tokens', async (req: Request, res: Response) => {
     try {
@@ -888,10 +900,10 @@ authRouter.get('/oauth/url', async (req: Request, res: Response) => {
                 res.status(400).json({ error: 'Microsoft OAuth is not configured. Set MICROSOFT_CLIENT_ID.' });
                 return;
             }
-            const pkce = oAuthStateService.generatePKCE();
+            const pkce = oauthStateService.generatePKCE();
             const codeVerifier = pkce.codeVerifier;
             const codeChallenge = pkce.codeChallenge;
-            await oAuthStateService.storeState(state, {
+            await oauthStateService.storeState(state, {
                 provider,
                 redirectUri,
                 codeVerifier,
@@ -914,10 +926,10 @@ authRouter.get('/oauth/url', async (req: Request, res: Response) => {
                 res.status(400).json({ error: 'Dropbox OAuth is not configured.' });
                 return;
             }
-            const pkce = oAuthStateService.generatePKCE();
+            const pkce = oauthStateService.generatePKCE();
             const codeVerifier = pkce.codeVerifier;
             const codeChallenge = pkce.codeChallenge;
-            await oAuthStateService.storeState(state, {
+            await oauthStateService.storeState(state, {
                 provider,
                 redirectUri,
                 codeVerifier,
@@ -1307,7 +1319,7 @@ authRouter.post('/oauth/exchange', requireAuth, async (req: AuthenticatedRequest
 
             let codeVerifier: string | undefined;
             if (req.body.state) {
-                const storedState = await oAuthStateService.validateState(req.body.state);
+                const storedState = await oauthStateService.validateState(req.body.state);
                 if (storedState && storedState.codeVerifier) {
                     codeVerifier = storedState.codeVerifier;
                 }
@@ -1401,7 +1413,7 @@ authRouter.post('/oauth/exchange', requireAuth, async (req: AuthenticatedRequest
 
             let codeVerifier: string | undefined;
             if (req.body.state) {
-                const storedState = await oAuthStateService.validateState(req.body.state);
+                const storedState = await oauthStateService.validateState(req.body.state);
                 if (storedState && storedState.codeVerifier) {
                     codeVerifier = storedState.codeVerifier;
                 }
@@ -1861,57 +1873,6 @@ authRouter.get('/connections/:provider/token', requireAuth, async (req: Authenti
 
     } catch (error) {
         logger.error('Get token error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error',
-        });
-    }
-});
-
-/**
- * POST /auth/internal/tokens
- * Fetch the decrypted access token for a connected provider using internal API key
- */
-authRouter.post('/internal/tokens', async (req: Request, res: Response) => {
-    try {
-        const apiKey = req.headers['x-api-key'];
-        if (apiKey !== config.internalApiKey) {
-            sendInvalidApiKey(res);
-            return;
-        }
-
-        const { userId, provider } = req.body;
-
-        if (!userId || !provider) {
-            res.status(400).json({ error: 'Missing userId or provider' });
-            return;
-        }
-
-        const providerAliases = getProviderAliases(provider);
-        const account = await prisma.account.findFirst({
-            where: {
-                userId,
-                provider: { in: providerAliases },
-            }
-        });
-
-        if (!account || (!account.access_token && !account.refresh_token)) {
-            sendConnectionNotFound(res, provider);
-            return;
-        }
-
-        const finalToken = await refreshTokenIfNeeded(account, provider);
-
-        res.json({
-            success: true,
-            provider,
-            access_token: finalToken,
-            refresh_token: account.refresh_token,
-            token_type: 'Bearer' // Add if needed
-        });
-
-    } catch (error) {
-        logger.error('Internal token error:', error);
         res.status(500).json({
             success: false,
             error: 'Internal server error',

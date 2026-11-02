@@ -2,9 +2,8 @@ import { randomUUID } from 'crypto';
 
 /**
  * Generates a User ID with "UD" prefix followed by UUID v4 (without dashes).
- * Format: UD{32 hex chars}
- * 
- * @returns {string} User ID with UD prefix
+ * Format: `UD{32 lowercase hex chars}`.
+ *
  * @example "UD9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c"
  */
 export function generateUserId(): string {
@@ -13,9 +12,8 @@ export function generateUserId(): string {
 
 /**
  * Generates a Workspace ID with "WS" prefix followed by UUID v4 (without dashes).
- * Format: WS{32 hex chars}
- * 
- * @returns {string} Workspace ID with WS prefix
+ * Format: `WS{32 lowercase hex chars}`.
+ *
  * @example "WS7f3e9d2a8b4c1f5e6d9a8b7c6d5e4f"
  */
 export function generateWorkspaceId(): string {
@@ -24,9 +22,8 @@ export function generateWorkspaceId(): string {
 
 /**
  * Generates a Graph ID with "GRF" prefix followed by UUID v4 (without dashes).
- * Format: GRF{32 hex chars}
- * 
- * @returns {string} Graph ID with GRF prefix
+ * Format: `GRF{32 lowercase hex chars}`.
+ *
  * @example "GRFa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5"
  */
 export function generateGraphId(): string {
@@ -35,12 +32,13 @@ export function generateGraphId(): string {
 
 /**
  * Validates that an entity ID matches the expected prefix and format.
- * Expected format: {prefix}{32 hex chars}
- * 
- * @param {string} id - The entity ID to validate
- * @param {string} expectedPrefix - The expected prefix ("UD", "WS", or "GRF")
- * @returns {boolean} True if ID is valid, false otherwise
- * 
+ * Expected format: `{prefix}{32 hex chars}` — the prefix check is
+ * case-sensitive by design, the hex body is case-insensitive.
+ *
+ * @param id - The entity ID to validate
+ * @param expectedPrefix - The expected prefix ("UD", "WS", or "GRF")
+ * @returns True when the ID is valid
+ *
  * @example
  * validateEntityId("UD9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c", "UD") // true
  * validateEntityId("WS7f3e9d2a8b4c1f5e6d9a8b7c6d5e4f", "UD") // false (wrong prefix)

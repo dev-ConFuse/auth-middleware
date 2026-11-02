@@ -1,3 +1,16 @@
+/**
+ * ConFuse Auth Middleware - Structured Logging (winston)
+ *
+ * Implements the platform observability contract (see
+ * .cline/rules/observability.md): correlation IDs flow through
+ * AsyncLocalStorage so every log line of a request carries `correlation_id`,
+ * and the one-per-request access record is emitted by the middleware in
+ * `index.ts`.
+ *
+ * LOG_LEVEL / LOG_FORMAT are required env vars (no literal fallback);
+ * LOG_FORMAT is `json` or `console`. File transports are added when a
+ * writable `logs/` directory exists (disabled silently on read-only FS).
+ */
 import winston from 'winston';
 import path from 'path';
 import fs from 'fs';

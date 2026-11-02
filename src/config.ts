@@ -1,10 +1,17 @@
 /**
  * ConFuse Auth Middleware - Configuration
- * 
- * Loads environment variables with validation
+ *
+ * Loads environment variables with validation. Env policy (see
+ * .cline/rules/env-policy.md): every value comes from env — required values
+ * fail fast at boot naming the missing variable, optional-by-design values
+ * stay `undefined` (absence means "feature off", never a literal fallback).
+ *
+ * Load order (later wins): `.map.env` (non-secret → AKS ConfigMap) →
+ * `.secret.env` (secrets → AKS Secret) → `.env.local` (developer overrides).
  */
 
 import dotenv from 'dotenv';
+import path from 'path';
 
 interface Auth0Config {
     domain: string;
@@ -21,8 +28,6 @@ interface Auth0Config {
     clientSecret?: string;
     managementDomain?: string;
 }
-
-import path from 'path';
 
 // Load .map.env first, then .secret.env (with override), then .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.map.env') });

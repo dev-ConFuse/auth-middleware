@@ -1,4 +1,15 @@
 
+/**
+ * ConFuse Auth Middleware - gRPC Auth Service (proto: proto/auth.proto)
+ *
+ * Consumed by client-connector (AUTH_GRPC_ADDR) for JWT / API-key validation
+ * and for fetching connected-provider OAuth tokens, so JWT and key knowledge
+ * stays in one service instead of being re-implemented everywhere.
+ *
+ * SECURITY BOUNDARY: the server binds with insecure credentials on purpose —
+ * it is only reachable on the cluster-internal network (GRPC_PORT + in-cluster
+ * DNS). Exposure control is the network policy; never publish this port.
+ */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
@@ -26,7 +37,10 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const authProto = grpc.loadPackageDefinition(packageDefinition) as any;
 
 /**
- * Validate Token Implementation
+ * ValidateToken — verify a user JWT (Auth0) and return the user's identity:
+ * user_id (Auth0 sub), roles, email and subscription tier (from the DB).
+ * Auth0 outages are propagated as errors so callers retry instead of
+ * treating the token as invalid.
  */
 const validateToken = async (call: any, callback: any) => {
     const { token } = call.request;
@@ -73,7 +87,8 @@ const validateToken = async (call: any, callback: any) => {
 };
 
 /**
- * Validate API Key Implementation
+ * ValidateApiKey — accept either the internal service key (mapped to a
+ * synthetic service user) or a user API key from the database.
  */
 const validateApiKey = async (call: any, callback: any) => {
     const { api_key } = call.request;
@@ -129,7 +144,8 @@ const validateApiKey = async (call: any, callback: any) => {
 };
 
 /**
- * Get Internal Token Implementation
+ * GetInternalToken — internal-key-only; returns a (refreshed) OAuth access
+ * token plus refresh token for a user's connected provider account.
  */
 const getInternalToken = async (call: any, callback: any) => {
     const { api_key, user_id, provider } = call.request;
@@ -171,7 +187,8 @@ const getInternalToken = async (call: any, callback: any) => {
 };
 
 /**
- * Get User Implementation
+ * GetUser — fetch a user's profile by id for other services.
+ * Maps DB outages to gRPC UNAVAILABLE so callers retry.
  */
 const getUser = async (call: any, callback: any) => {
     const { user_id } = call.request;
@@ -218,7 +235,8 @@ const getUser = async (call: any, callback: any) => {
 
 
 /**
- * Start gRPC Server
+ * Start the gRPC server on GRPC_PORT (in-cluster only — insecure
+ * credentials by design, see module header).
  */
 export const startGrpcServer = () => {
     const server = new grpc.Server();

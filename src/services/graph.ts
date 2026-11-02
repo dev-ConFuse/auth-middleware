@@ -1,3 +1,19 @@
+/**
+ * ConFuse Auth Middleware - Workspace Graph Registry (workspace-byodb spec)
+ *
+ * Tracks the *logical* graphs attached to a workspace: at most one ConFuse
+ * graph (service-managed FalkorDB) and one BYODB graph (customer-owned
+ * FalkorDB endpoint whose credentials live in the secret store).
+ *
+ * NOT TO BE CONFUSED WITH `services/user-graph.ts` — that module provisions
+ * the per-user `graph-<userId>` graphs on the service-owned FalkorDB at login
+ * time. This module manages workspace-scoped graph *records* and their
+ * lifecycle (create / switch / soft-delete).
+ *
+ * Status: implemented per .kiro/specs/workspace-byodb-architecture but not
+ * yet exposed over HTTP routes.
+ */
+
 import { prisma } from '../infra/db.js';
 import { generateGraphId } from './id-generator.js';
 import { encryptSecret, decryptSecret } from './secret-store.js';
@@ -22,6 +38,10 @@ export interface CreateBYODBGraphInput {
   userId: string;
 }
 
+/**
+ * Create the workspace's ConFuse graph record (at most one per workspace) and
+ * point the workspace at it when it has no active graph yet.
+ */
 export async function createConFuseGraph(input: CreateConFuseGraphInput) {
   const existingGraph = await prisma.graph.findFirst({
     where: {
@@ -62,6 +82,11 @@ export async function createConFuseGraph(input: CreateConFuseGraphInput) {
   return graph;
 }
 
+/**
+ * Create a BYODB graph record for a customer-owned FalkorDB endpoint (at most
+ * one per workspace). Password / CA cert are write-only inputs: they go to the
+ * secret store and only their refs are persisted on the connection row.
+ */
 export async function createBYODBGraph(input: CreateBYODBGraphInput) {
   const existingGraph = await prisma.graph.findFirst({
     where: {
@@ -137,6 +162,7 @@ export async function createBYODBGraph(input: CreateBYODBGraphInput) {
   return graph;
 }
 
+/** Point the workspace at one of its existing, non-deleted ACTIVE graphs. */
 export async function switchActiveGraph(
   workspaceId: string,
   graphId: string,
@@ -161,6 +187,12 @@ export async function switchActiveGraph(
   });
 }
 
+/**
+ * Soft-delete a graph record and hard-delete its BYODB connection row in one
+ * transaction; clears the workspace's active-graph pointer when it pointed
+ * here. NOTE: unlike services/falkordb/connections.ts#deleteConnection, this
+ * does NOT purge the connection's secret-store entries yet (follow-up).
+ */
 export async function deleteGraph(
   graphId: string,
   workspaceId: string,
@@ -207,6 +239,7 @@ export async function deleteGraph(
   return { success: true };
 }
 
+/** List a workspace's non-deleted graphs with connection metadata (no secret fields). */
 export async function listWorkspaceGraphs(workspaceId: string) {
   return prisma.graph.findMany({
     where: {

@@ -1,7 +1,14 @@
 /**
  * ConFuse Auth Middleware - Main Entry Point
- * 
- * Express application for Auth0-based authentication
+ *
+ * Express application for Auth0-based authentication. Route mounts:
+ *   /                    → healthRouter (liveness + bounded /health probe)
+ *   /api/auth and /auth  → authRouter (login, verify, OAuth, connections;
+ *                          the /auth mount is the legacy fallback surface)
+ *   /api/v1/user         → userRouter (profile, onboarding, account delete)
+ *   /api/v1/billing      → billingRouter (plans, subscription, portal)
+ *   /api/v1/falkordb-connections → customer-owned FalkorDB endpoints
+ * Plus the gRPC server (infra/grpc.ts) on GRPC_PORT.
  */
 
 import express, { type Request, type Response, type NextFunction } from 'express';
@@ -11,7 +18,7 @@ const require = createRequire(import.meta.url);
 const helmet = require('helmet');
 import { config } from './config.js';
 import authRouter from './auth.js';
-import { healthRoutes, userRoutes } from './routes/index.js';
+import { healthRouter, userRouter } from './routes/index.js';
 import billingRouter from './routes/billing.js';
 import { falkorDbConnectionsRouter } from './routes/falkordb-connections.js';
 
@@ -19,10 +26,18 @@ import { falkorDbConnectionsRouter } from './routes/falkordb-connections.js';
 import { randomUUID } from 'crypto';
 import { logger, asyncLocalStorage } from './utils/logger.js';
 import { rateLimitMiddleware } from './middleware/rate-limiter.js';
+import { securityHeadersMiddleware } from './middleware/security-headers.js';
+import { startGrpcServer } from './infra/grpc.js';
 
 const SENSITIVE_QUERY_KEYS = ['token', 'key', 'secret', 'password', 'auth'];
 
-/** Redact secret-looking query values so access logs never leak credentials. */
+/**
+ * Redact secret-looking query values so access logs never leak credentials.
+ * NOTE: this is the access-log *query-string* sanitizer. For free-form
+ * strings (error messages, stack traces, connection URLs, PEM blocks) use
+ * `utils/redact.ts` (`redactSensitive` / `redactStructured`) instead — those
+ * cover credential patterns this key-based filter cannot see.
+ */
 function sanitizeQuery(query: string): string {
     return query
         .split('&')
@@ -34,8 +49,6 @@ function sanitizeQuery(query: string): string {
         })
         .join('&');
 }
-import { securityHeadersMiddleware } from './middleware/security-headers.js';
-import { startGrpcServer } from './infra/grpc.js';
 
 // Global error handler for uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -144,7 +157,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // Health & Metrics
-app.use('/', healthRoutes);
+app.use('/', healthRouter);
 
 // Authentication API
 app.use('/api/auth', authRouter);
@@ -153,7 +166,7 @@ app.use('/api/auth', authRouter);
 app.use('/auth', authRouter);
 
 // User Profile & Onboarding API
-app.use('/api/v1/user', userRoutes);
+app.use('/api/v1/user', userRouter);
 
 // Billing & Subscription API
 app.use('/api/v1/billing', billingRouter);

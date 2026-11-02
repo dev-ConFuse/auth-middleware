@@ -18,7 +18,8 @@ interface CachedToken {
     expiresAt: number;
 }
 
-// Cache statistics
+// Cache counters — kept local to this module on purpose; nothing outside
+// consumes them, so no shared type is exported.
 interface CacheStats {
     hits: number;
     misses: number;

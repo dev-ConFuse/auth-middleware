@@ -1,3 +1,16 @@
+/**
+ * ConFuse Auth Middleware - Per-user FalkorDB Graph Provisioning
+ *
+ * Creates/drops the per-user `graph-<userId>` graph on the *service-owned*
+ * FalkorDB instance (FALKORDB_* config) — the home of each user's knowledge
+ * graph (Vector_Chunk / Code_Entity / Web_Page / Repository nodes plus the
+ * embedding-dimension vector index).
+ *
+ * NOT TO BE CONFUSED WITH `services/graph.ts` — that module manages
+ * workspace-scoped graph *registry records* (ConFuse vs BYODB). This module
+ * talks to FalkorDB directly: called at login (`createUserGraph`, idempotent)
+ * and on account deletion (`deleteUserGraph`).
+ */
 import { Redis } from 'ioredis';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';

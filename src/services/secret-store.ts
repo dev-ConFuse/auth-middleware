@@ -1,9 +1,35 @@
-﻿import crypto from 'crypto';
+﻿/**
+ * ConFuse Auth Middleware - Encrypted Secret Store (application-level vault)
+ *
+ * WHY THIS EXISTS (vs `.secret.env`):
+ *   `.secret.env` / the AKS Secret hold *deploy-time* config known before
+ *   boot. This module instead protects **runtime, user-supplied secrets** —
+ *   BYODB FalkorDB passwords, CA certificates and client keys that customers
+ *   submit through the API after deployment. Those cannot live in env files,
+ *   so they are stored AES-256-GCM encrypted in the application database and
+ *   referenced elsewhere by opaque `secretRef` strings only.
+ *
+ * SECRETREF INDIRECTION:
+ *   Connection rows store refs (e.g. `falkordb/<id>/password`), never
+ *   plaintext. This keeps API DTOs (`toPublicConnection`), logs and DB
+ *   dumps safe by construction, and makes rotation (`putSecret` on the same
+ *   ref) and revocation (`deleteSecretsByPrefix`) independent of the rows
+ *   that reference them.
+ *
+ * KEY MANAGEMENT:
+ *   The master key comes from `SECRETS_ENCRYPTION_KEY` (32 bytes, hex or
+ *   base64) in `.secret.env`. `KEY_VERSION` is stored per row so keys can be
+ *   rotated later; it is currently fixed at 1.
+ */
+
+import crypto from 'crypto';
 import { prisma } from '../infra/db.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
+// Stored on every row so the master key can be rotated per-secret later;
+// currently everything is written with version 1.
 const KEY_VERSION = 1;
 
 function getMasterKey(): Buffer {
@@ -21,6 +47,12 @@ function getMasterKey(): Buffer {
   return decoded;
 }
 
+/**
+ * Encrypt `plaintext` (AES-256-GCM) and persist it, returning the generated
+ * `secretRef` (`<purpose>::<uuid>`). Despite the name this WRITES to the
+ * database — callers (e.g. graph.ts) keep only the returned ref, never the
+ * value. Use `putSecret` when a stable, caller-chosen ref is needed.
+ */
 export async function encryptSecret(
   plaintext: string,
   ownerId: string,
@@ -51,6 +83,10 @@ export async function encryptSecret(
   return secretRef;
 }
 
+/**
+ * Look up a `secretRef` and decrypt it. Throws when the ref is unknown or the
+ * ciphertext fails authentication (wrong master key or tampered row).
+ */
 export async function decryptSecret(secretRef: string): Promise<string> {
   const secret = await prisma.secret.findUnique({
     where: { secretRef },
@@ -72,6 +108,7 @@ export async function decryptSecret(secretRef: string): Promise<string> {
   return plaintext;
 }
 
+/** Remove a single secret. Idempotent (deleteMany). */
 export async function deleteSecret(secretRef: string): Promise<void> {
   await prisma.secret.deleteMany({
     where: { secretRef },
@@ -140,7 +177,11 @@ export async function deleteSecretsByPrefix(prefix: string): Promise<number> {
 }
 
 
-/** Constant-time string comparison helper (for internal API key checks). */
+/**
+ * Constant-time string comparison helper (for internal API key checks).
+ * Lives here because it guards secret material — any credential comparison
+ * must reuse this instead of `===` to avoid timing side channels.
+ */
 export function safeEquals(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);

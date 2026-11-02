@@ -7,6 +7,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import type { AuthenticatedRequest } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
 // ── In-memory store ──
@@ -95,9 +96,9 @@ const TIERS: Record<string, RateLimitTier> = {
     refresh: { maxRequests: 30, windowMs: 60_000 },     // 30 req/min for token refresh
     api: { maxRequests: 120, windowMs: 60_000 },        // 120 req/min general API
     sessions: { maxRequests: 30, windowMs: 60_000 },    // 30 req/min for session ops
-    pro_api: { maxRequests: 240, windowMs: 60_000 },    // 240 req/min for Pro
-    team_api: { maxRequests: 480, windowMs: 60_000 },   // 480 req/min for Team
-    enterprise_api: { maxRequests: 1000, windowMs: 60_000 }, // 1000 req/min for Enterprise
+    proApi: { maxRequests: 240, windowMs: 60_000 },    // 240 req/min for Pro
+    teamApi: { maxRequests: 480, windowMs: 60_000 },   // 480 req/min for Team
+    enterpriseApi: { maxRequests: 1000, windowMs: 60_000 }, // 1000 req/min for Enterprise
 };
 
 function getTierForPath(path: string, userTier: string = 'free'): RateLimitTier {
@@ -105,9 +106,9 @@ function getTierForPath(path: string, userTier: string = 'free'): RateLimitTier 
     if (path.includes('/refresh')) return TIERS.refresh;
     if (path.includes('/sessions')) return TIERS.sessions;
 
-    if (userTier === 'pro') return TIERS.pro_api;
-    if (userTier === 'team') return TIERS.team_api;
-    if (userTier === 'enterprise') return TIERS.enterprise_api;
+    if (userTier === 'pro') return TIERS.proApi;
+    if (userTier === 'team') return TIERS.teamApi;
+    if (userTier === 'enterprise') return TIERS.enterpriseApi;
     return TIERS.api;
 }
 
@@ -115,7 +116,7 @@ function getTierForPath(path: string, userTier: string = 'free'): RateLimitTier 
 
 function getClientKey(req: Request): string {
     // Prefer authenticated user ID, fall back to IP
-    const user = (req as unknown as import('../types/index.js').AuthenticatedRequest).user;
+    const user = (req as AuthenticatedRequest).user;
     if (user?.sub) return `user:${user.sub}`;
     if (user?.id) return `user:${user.id}`;
     const forwarded = req.headers['x-forwarded-for'];
@@ -128,8 +129,11 @@ function getClientKey(req: Request): string {
 export function rateLimitMiddleware() {
     return (req: Request, res: Response, next: NextFunction): void => {
         const clientKey = getClientKey(req);
-        const user = (req as unknown as import('../types/index.js').AuthenticatedRequest).user;
-        const userTier = typeof (user as any)?.subscription_tier === 'string' ? (user as any).subscription_tier : 'free';
+        const user = (req as AuthenticatedRequest).user;
+        // subscription_tier is the cross-service wire contract (gRPC proto +
+        // frontend); Auth0Claims also declares a camelCase variant used by the
+        // Prisma layer — the snake_case wire value wins for tier-based limits.
+        const userTier = typeof user?.subscription_tier === 'string' ? user.subscription_tier : 'free';
 
         const tier = getTierForPath(req.path, userTier);
 

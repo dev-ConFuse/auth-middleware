@@ -39,7 +39,7 @@ billingRouter.get('/plans', (_req: Request, res: Response) => {
             formatted_price: '₹0/month',
             description: 'For individual developers getting started with code and document intelligence.',
             features: {
-                repositories: 'Up to 2 repos',
+                repositories: 'Up to 3 repos',
                 documents: 'Up to 4 documents',
                 storage: '256 MB max space',
                 requests: '80,000 requests/month',

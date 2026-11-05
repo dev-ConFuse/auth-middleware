@@ -36,7 +36,7 @@ billingRouter.get('/plans', (_req: Request, res: Response) => {
             name: 'Free',
             tier: 'free',
             price_monthly: 0,
-            formatted_price: '₹0/month',
+            formatted_price: '$0/month',
             description: 'For individual developers getting started with code and document intelligence.',
             features: {
                 repositories: 'Up to 3 repos',
@@ -59,8 +59,8 @@ billingRouter.get('/plans', (_req: Request, res: Response) => {
             id: 'plan-pro',
             name: 'ConFuse Pro',
             tier: 'pro',
-            price_monthly: 800,
-            formatted_price: '₹800.00/month',
+            price_monthly: 17,
+            formatted_price: '$17.00/month',
             description: 'For power developers and small projects needing higher storage and limits.',
             features: {
                 repositories: 'Up to 5 repos',
@@ -83,8 +83,8 @@ billingRouter.get('/plans', (_req: Request, res: Response) => {
             id: 'plan-team',
             name: 'ConFuse Team',
             tier: 'team',
-            price_monthly: 2300,
-            formatted_price: '₹2,300.00/month',
+            price_monthly: 34,
+            formatted_price: '$34.00/month',
             description: 'For engineering teams requiring shared databases and advanced security controls.',
             features: {
                 repositories: 'Up to 10 repos',
@@ -108,8 +108,8 @@ billingRouter.get('/plans', (_req: Request, res: Response) => {
             id: 'plan-enterprise',
             name: 'ConFuse Enterprise',
             tier: 'enterprise',
-            price_monthly: 4000,
-            formatted_price: '₹4,000.00+/month',
+            price_monthly: 0,
+            formatted_price: 'Custom',
             description: 'For organizations needing high scale, custom quotas, and dedicated infrastructure.',
             features: {
                 repositories: 'Custom / Unlimited repos',

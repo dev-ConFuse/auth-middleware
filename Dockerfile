@@ -21,7 +21,7 @@ COPY prisma.config.ts ./
 ARG PRISMA_GENERATE_URL
 
 # Install ALL dependencies (npm will install local paths correctly now)
-RUN DATABASE_URL="$PRISMA_GENERATE_URL" npm install
+RUN DATABASE_URL="$PRISMA_GENERATE_URL" npm install --no-audit --no-fund --fetch-retries=5 --fetch-retry-maxtimeout=120000 --fetch-timeout=600000
 
 # Copy source files and proto
 COPY src ./src/

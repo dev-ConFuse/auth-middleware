@@ -10,6 +10,7 @@
 import { Router, type Request, type Response } from 'express';
 import prisma, { probeDatabaseHealth } from '../infra/db.js';
 import { requireAuth } from '../auth.js';
+import { createUserGraph } from '../services/user-graph.js';
 import { logger } from '../utils/logger.js';
 import type { AuthenticatedRequest, Auth0Claims } from '../types/index.js';
 
@@ -89,6 +90,101 @@ userRouter.post('/onboarding', requireAuth, async (req: AuthenticatedRequest, re
         });
     } catch (error) {
         logger.error('[ONBOARDING] POST error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
+    }
+});
+
+/**
+ * GET /graph/setup — the user's knowledge-graph storage choice.
+ *
+ * Graphs are deliberately NOT provisioned at signup/login: the dashboard asks
+ * the user to choose between a ConFuse-managed graph and BYODB, and only then
+ * is a graph created. The choice lives in UserPreference.customSettings.
+ */
+userRouter.get('/graph/setup', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const claims = req.user as Auth0Claims;
+        const user = await prisma.user.findUnique({
+            where: { auth0Sub: claims.sub },
+            select: { id: true },
+        });
+
+        if (!user) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        const pref = await prisma.userPreference.findUnique({
+            where: { userId: user.id },
+            select: { customSettings: true },
+        });
+        const settings = (pref?.customSettings ?? {}) as Record<string, unknown>;
+
+        res.json({
+            success: true,
+            data: { mode: typeof settings['graphSetup'] === 'string' ? settings['graphSetup'] : null },
+        });
+    } catch (error) {
+        logger.error('[GRAPH-SETUP] GET error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
+    }
+});
+
+/**
+ * POST /graph/setup — record the choice; provision only on 'managed'.
+ *
+ * This is the ONLY place the per-user `graph-<userId>` graph is created —
+ * 'byodb' defers storage to a customer-owned FalkorDB configured through the
+ * BYODB flow.
+ */
+userRouter.post('/graph/setup', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const claims = req.user as Auth0Claims;
+        const { mode } = req.body as { mode?: string };
+
+        if (mode !== 'managed' && mode !== 'byodb') {
+            res.status(400).json({ error: "Invalid mode: expected 'managed' or 'byodb'" });
+            return;
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { auth0Sub: claims.sub },
+            select: { id: true },
+        });
+
+        if (!user) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        if (mode === 'managed') {
+            await createUserGraph(user.id);
+        }
+
+        const existing = await prisma.userPreference.findUnique({
+            where: { userId: user.id },
+        });
+        const currentSettings = (existing?.customSettings ?? {}) as Record<string, unknown>;
+        const nextSettings = { ...currentSettings, graphSetup: mode };
+
+        const pref = existing
+            ? await prisma.userPreference.update({
+                  where: { userId: user.id },
+                  data: { customSettings: nextSettings },
+                  select: { customSettings: true },
+              })
+            : await prisma.userPreference.create({
+                  data: { userId: user.id, customSettings: nextSettings },
+                  select: { customSettings: true },
+              });
+        const settings = (pref?.customSettings ?? {}) as Record<string, unknown>;
+
+        res.json({
+            success: true,
+            data: { mode: typeof settings['graphSetup'] === 'string' ? settings['graphSetup'] : mode },
+        });
+    } catch (error) {
+        logger.error('[GRAPH-SETUP] POST error:', error);
         res.status(500).json({ error: 'Internal server error', details: error instanceof Error ? error.message : String(error) });
     }
 });

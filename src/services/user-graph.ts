@@ -8,8 +8,9 @@
  *
  * NOT TO BE CONFUSED WITH `services/graph.ts` — that module manages
  * workspace-scoped graph *registry records* (ConFuse vs BYODB). This module
- * talks to FalkorDB directly: called at login (`createUserGraph`, idempotent)
- * and on account deletion (`deleteUserGraph`).
+ * talks to FalkorDB directly: called only on the user's explicit graph-setup
+ * choice (`createUserGraph`, POST /api/v1/user/graph/setup — never at signup
+ * or login) and on account deletion (`deleteUserGraph`).
  */
 import { Redis } from 'ioredis';
 import { logger } from '../utils/logger.js';

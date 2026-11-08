@@ -95,6 +95,45 @@ export async function createUserGraph(userId: string): Promise<void> {
 }
 
 /**
+ * Reports whether the ConFuse-managed per-user graph already exists.
+ *
+ * WHY GRAPH.LIST: it is read-only — a GRAPH.QUERY against a missing graph
+ * would implicitly CREATE it, which is exactly what must not happen before
+ * the user has chosen their storage. Mirrors connection-tester.ts.
+ */
+export async function userGraphExists(userId: string): Promise<boolean> {
+  const graphName = `graph-${userId}`;
+
+  const redis = new Redis({
+    host: falkordbHost,
+    port: falkordbPort,
+    username: falkordbUsername,
+    password: falkordbPassword,
+    connectTimeout: 10000,
+    lazyConnect: false,
+    retryStrategy: (times: number) => {
+      if (times > 3) {
+        return null;
+      }
+      return Math.min(times * 200, 1000);
+    },
+  });
+
+  try {
+    const reply = await redis.call('GRAPH.LIST');
+    const names = Array.isArray(reply) ? reply.map(String) : [];
+    return names.includes(graphName);
+  } catch (error: any) {
+    logger.error(`Error checking FalkorDB graph for user ${userId}:`, {
+      error: error.message,
+    });
+    return false;
+  } finally {
+    redis.disconnect();
+  }
+}
+
+/**
  * Deletes a FalkorDB graph for a user, dropping all nodes and edges.
  */
 export async function deleteUserGraph(userId: string): Promise<void> {

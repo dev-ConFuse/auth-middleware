@@ -116,6 +116,16 @@ falkorDbConnectionsRouter.post('/', requireAuth, async (req: AuthenticatedReques
         const customerId = await resolveCustomerId(claims);
         if (!customerId) return void res.status(401).json({ error: 'User not found' });
 
+        // At most ONE customer-owned (BYODB) connection per user — the
+        // platform allows one ConFuse-managed graph AND one BYODB connection,
+        // never two of either.
+        const existingConnections = await listConnections(customerId);
+        if (existingConnections.length > 0) {
+            return void res.status(409).json({
+                error: 'BYODB_LIMIT_REACHED: you already have a connected database',
+            });
+        }
+
         const { connection, testResult } = await createConnection(customerId, req.body ?? {});
         if (!connection) {
             return void res.status(422).json({

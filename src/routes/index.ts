@@ -10,7 +10,7 @@
 import { Router, type Request, type Response } from 'express';
 import prisma, { probeDatabaseHealth } from '../infra/db.js';
 import { requireAuth } from '../auth.js';
-import { createUserGraph } from '../services/user-graph.js';
+import { createUserGraph, userGraphExists } from '../services/user-graph.js';
 import { logger } from '../utils/logger.js';
 import type { AuthenticatedRequest, Auth0Claims } from '../types/index.js';
 
@@ -119,10 +119,21 @@ userRouter.get('/graph/setup', requireAuth, async (req: AuthenticatedRequest, re
             select: { customSettings: true },
         });
         const settings = (pref?.customSettings ?? {}) as Record<string, unknown>;
+        const stored = typeof settings['graphSetup'] === 'string' ? settings['graphSetup'] : null;
+
+        // Reality beats the recorded choice: accounts provisioned before this
+        // endpoint existed own a graph but carry no stored choice.
+        const managedGraphExists = await userGraphExists(user.id);
+        const byodbConnection = await prisma.falkorDbConnection.findFirst({
+            where: { customerId: user.id },
+            select: { id: true },
+        });
+        const byodbConnected = !!byodbConnection;
+        const mode = stored ?? (managedGraphExists ? 'managed' : byodbConnected ? 'byodb' : null);
 
         res.json({
             success: true,
-            data: { mode: typeof settings['graphSetup'] === 'string' ? settings['graphSetup'] : null },
+            data: { mode, managedGraphExists, byodbConnected },
         });
     } catch (error) {
         logger.error('[GRAPH-SETUP] GET error:', error);
@@ -157,7 +168,11 @@ userRouter.post('/graph/setup', requireAuth, async (req: AuthenticatedRequest, r
             return;
         }
 
-        if (mode === 'managed') {
+        // At most ONE ConFuse-managed graph per user. The name is deterministic
+        // (graph-<userId>), so this is structural — the exists-check makes
+        // re-setup a no-op instead of a silent re-provision.
+        const managedGraphExists = await userGraphExists(user.id);
+        if (mode === 'managed' && !managedGraphExists) {
             await createUserGraph(user.id);
         }
 
@@ -178,10 +193,18 @@ userRouter.post('/graph/setup', requireAuth, async (req: AuthenticatedRequest, r
                   select: { customSettings: true },
               });
         const settings = (pref?.customSettings ?? {}) as Record<string, unknown>;
+        const byodbConnection = await prisma.falkorDbConnection.findFirst({
+            where: { customerId: user.id },
+            select: { id: true },
+        });
 
         res.json({
             success: true,
-            data: { mode: typeof settings['graphSetup'] === 'string' ? settings['graphSetup'] : mode },
+            data: {
+                mode: typeof settings['graphSetup'] === 'string' ? settings['graphSetup'] : mode,
+                managedGraphExists: managedGraphExists || mode === 'managed',
+                byodbConnected: !!byodbConnection,
+            },
         });
     } catch (error) {
         logger.error('[GRAPH-SETUP] POST error:', error);

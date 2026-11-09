@@ -8,26 +8,12 @@ import { User, UserProfile, CreateUserInput } from '../types/index.js';
 import prisma, { withDbRetry } from '../infra/db.js';
 import { logger } from '../utils/logger.js';
 
-/**
- * Ensures a user's FalkorDB graph exists, creating it if necessary
- * This is called for both new users and returning users to guarantee the graph exists
- */
-async function ensureUserGraphExists(userId: string): Promise<void> {
-    logger.info('[USER] Ensuring FalkorDB graph exists', { userId });
-    try {
-        const { createUserGraph } = await import('./user-graph.js');
-        logger.info('[USER] createUserGraph module imported', { userId });
-        await createUserGraph(userId);
-        logger.info('[USER] FalkorDB graph ensured successfully', { userId });
-    } catch (err) {
-        logger.error('[USER] Failed to ensure FalkorDB graph', { 
-            userId, 
-            error: err instanceof Error ? err.message : String(err),
-            stack: err instanceof Error ? err.stack : undefined
-        });
-        // Don't throw - allow user creation/login to proceed
-    }
-}
+// NOTE: signup/login deliberately does NOT provision a FalkorDB graph. The
+// knowledge-graph storage choice (ConFuse-managed graph vs BYODB) is an
+// explicit user action — `createUserGraph` runs only from
+// POST /api/v1/user/graph/setup (routes/index.ts), never from user sync.
+// Downstream ingest paths lazily initialize the vector index on first write,
+// so a not-yet-created graph is safe.
 
 /**
  * Normalizes an Auth0 subject into a safe string before any database lookup.
@@ -82,11 +68,6 @@ async function syncAuth0User(input: CreateUserInput): Promise<User> {
                 lastLoginAt: new Date(),
             },
         });
-        
-        // Ensure FalkorDB graph exists for returning user
-        logger.info('[USER] Calling ensureUserGraphExists for existing user', { userId: user.id });
-        await ensureUserGraphExists(user.id);
-        
         return user as User;
     }
 
@@ -107,11 +88,6 @@ async function syncAuth0User(input: CreateUserInput): Promise<User> {
                 lastLoginAt: new Date(),
             },
         });
-        
-        // Ensure FalkorDB graph exists for returning user
-        logger.info('[USER] Calling ensureUserGraphExists for email-linked user', { userId: user.id });
-        await ensureUserGraphExists(user.id);
-        
         return user as User;
     }
 
@@ -128,9 +104,9 @@ async function syncAuth0User(input: CreateUserInput): Promise<User> {
     });
     logger.info('[USER] New user created in database', { userId: user.id });
 
-    // Initialize the per-user FalkorDB graph - CRITICAL: must succeed
-    logger.info('[USER] Calling ensureUserGraphExists for new user', { userId: user.id });
-    await ensureUserGraphExists(user.id);
+    // No FalkorDB graph is provisioned here — the storage choice
+    // (ConFuse-managed graph vs BYODB) is made explicitly via
+    // POST /api/v1/user/graph/setup after signup.
 
     // Create default preferences
     try {

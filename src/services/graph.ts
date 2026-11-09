@@ -6,9 +6,10 @@
  * FalkorDB endpoint whose credentials live in the secret store).
  *
  * NOT TO BE CONFUSED WITH `services/user-graph.ts` — that module provisions
- * the per-user `graph-<userId>` graphs on the service-owned FalkorDB at login
- * time. This module manages workspace-scoped graph *records* and their
- * lifecycle (create / switch / soft-delete).
+ * the per-user `graph-<userId>` graphs on the service-owned FalkorDB only on
+ * the user's explicit graph-setup choice (never at signup/login). This module
+ * manages workspace-scoped graph *records* and their lifecycle
+ * (create / switch / soft-delete).
  *
  * Status: implemented per .kiro/specs/workspace-byodb-architecture but not
  * yet exposed over HTTP routes.

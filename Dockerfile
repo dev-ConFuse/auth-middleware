@@ -19,9 +19,14 @@ COPY prisma.config.ts ./
 # A throwaway codegen URL is supplied per build via --build-arg (never a real
 # config value — the runtime reads DATABASE_URL from .secret.env).
 ARG PRISMA_GENERATE_URL
+ENV PRISMA_GENERATE_URL=$PRISMA_GENERATE_URL
+
+# Create minimal env files for prisma generate (runtime uses mounted .map.env/.secret.env)
+RUN echo "DATABASE_URL=\"$PRISMA_GENERATE_URL\"" > .map.env && \
+    echo "DATABASE_URL=\"$PRISMA_GENERATE_URL\"" > .secret.env
 
 # Install ALL dependencies (npm will install local paths correctly now)
-RUN DATABASE_URL="$PRISMA_GENERATE_URL" npm install --no-audit --no-fund --fetch-retries=5 --fetch-retry-maxtimeout=120000 --fetch-timeout=600000
+RUN PRISMA_GENERATE_URL="$PRISMA_GENERATE_URL" npm install --no-audit --no-fund --fetch-retries=5 --fetch-retry-maxtimeout=120000 --fetch-timeout=600000
 
 # Copy source files and proto
 COPY src ./src/
@@ -55,6 +60,9 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 
 # Copy Prisma schema and generated client
 COPY --chown=node:node --from=builder /app/prisma ./prisma/
+
+# Copy Prisma config for migrations
+COPY --chown=node:node --from=builder /app/prisma.config.ts ./
 
 # Copy package.json for runtime
 COPY --chown=node:node --from=builder /app/package.json ./

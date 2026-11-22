@@ -1,13 +1,16 @@
-import { config } from 'dotenv';
-import path from 'path';
-config({ path: path.resolve(process.cwd(), '.map.env') });
-config({ path: path.resolve(process.cwd(), '.secret.env') });
+/// <reference types="node" />
 
-import { defineConfig, env } from 'prisma/config';
+import { defineConfig } from 'prisma/config';
+import { env } from 'node:process';
+
+// Runtime DATABASE_URL is provided via environment variable (mounted .secret.env)
+// Build-time DATABASE_URL is provided via --build-arg PRISMA_GENERATE_URL
+// Priority: runtime DATABASE_URL > build-time PRISMA_GENERATE_URL > fallback
+const url = env.DATABASE_URL || env.PRISMA_GENERATE_URL || 'postgresql://localhost:5432/postgres';
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   datasource: {
-    url: env('DATABASE_URL'),
+    url,
   },
 });

@@ -103,7 +103,9 @@ function requireEnvAny(names: string[]): string {
 
 /** Parse an already-required env value as an integer. */
 function parseIntEnv(names: string[], value: string): number {
-    const parsed = parseInt(value, 10);
+    // Strip quotes if present (podman --env-file may include them)
+    const cleaned = value.replace(/^["']|["']$/g, '');
+    const parsed = parseInt(cleaned, 10);
     if (Number.isNaN(parsed)) {
         throw new Error(`Invalid integer for environment variable: ${names.join(' | ')}`);
     }

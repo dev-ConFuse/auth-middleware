@@ -33,6 +33,7 @@ import {
     testSavedConnection,
     updateConnection,
 } from '../services/falkordb/connections.js';
+import { createBYODBGraph } from '../services/graph.js';
 
 export const falkorDbConnectionsRouter = Router();
 
@@ -66,7 +67,33 @@ falkorDbConnectionsRouter.get('/', requireAuth, async (req: AuthenticatedRequest
         if (!customerId) return void res.status(401).json({ error: 'User not found' });
 
         const connections = await listConnections(customerId);
-        res.json({ connections });
+
+        // Also fetch associated Graph records for each connection
+        const connectionIds = connections.map(c => c.id);
+        const graphs = await prisma.graph.findMany({
+            where: {
+                falkorDbConnectionId: { in: connectionIds },
+                deletedAt: null,
+            },
+            select: {
+                id: true,
+                falkorDbConnectionId: true,
+                workspaceId: true,
+                name: true,
+                type: true,
+                status: true,
+                createdAt: true,
+            },
+        });
+
+        // Attach graph info to connections
+        const graphByConnectionId = new Map(graphs.map(g => [g.falkorDbConnectionId!, g]));
+        const connectionsWithGraph = connections.map(c => ({
+            ...c,
+            graph: graphByConnectionId.get(c.id) ?? null,
+        }));
+
+        res.json({ connections: connectionsWithGraph });
     } catch (error) {
         handleError(res, error, 'Failed to list connections');
     }
@@ -89,7 +116,7 @@ falkorDbConnectionsRouter.post('/test', requireAuth, async (req: AuthenticatedRe
 });
 
 /**
- * Get a single connection (public DTO — no secret values).
+ * Get a single connection (public DTO — no secret values). Also returns associated Graph if exists.
  */
 falkorDbConnectionsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -99,16 +126,24 @@ falkorDbConnectionsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequ
 
         const connection = await getConnection(customerId, String(req.params.id));
         if (!connection) return void res.status(404).json({ error: 'Connection not found' });
-        res.json({ connection });
+
+        // Also fetch associated Graph record if exists
+        const graph = await prisma.graph.findFirst({
+            where: { falkorDbConnectionId: String(req.params.id), deletedAt: null },
+        });
+
+        res.json({ connection, graph: graph ?? null });
     } catch (error) {
         handleError(res, error, 'Failed to get connection');
     }
 });
 
 /**
- * Verify + create a connection. When verification fails and the user has not
+ * Verify + create a BYODB graph connection. When verification fails and the user has not
  * opted into `allowUnverified`, nothing is saved and the test result (with
  * actionable error codes/hints) is returned with HTTP 422.
+ * 
+ * Requires `workspaceId` in the request body to associate the graph with a workspace.
  */
 falkorDbConnectionsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -116,26 +151,55 @@ falkorDbConnectionsRouter.post('/', requireAuth, async (req: AuthenticatedReques
         const customerId = await resolveCustomerId(claims);
         if (!customerId) return void res.status(401).json({ error: 'User not found' });
 
-        // At most ONE customer-owned (BYODB) connection per user — the
-        // platform allows one ConFuse-managed graph AND one BYODB connection,
+        // Extract workspaceId from request body
+        const workspaceId = req.body?.workspaceId;
+        if (!workspaceId) {
+            return void res.status(400).json({ error: 'workspaceId is required' });
+        }
+
+        // At most ONE customer-owned (BYODB) connection per workspace — the
+        // platform allows one ConFuse-managed graph AND one BYODB connection per workspace,
         // never two of either.
-        const existingConnections = await listConnections(customerId);
-        if (existingConnections.length > 0) {
+        const existingGraph = await prisma.graph.findFirst({
+            where: {
+                workspaceId,
+                type: 'BYODB',
+                deletedAt: null,
+            },
+        });
+        if (existingGraph) {
             return void res.status(409).json({
-                error: 'BYODB_LIMIT_REACHED: you already have a connected database',
+                error: 'BYODB_LIMIT_REACHED: workspace already has a BYODB graph',
             });
         }
 
-        const { connection, testResult } = await createConnection(customerId, req.body ?? {});
-        if (!connection) {
-            return void res.status(422).json({
-                error: 'Connection verification failed — nothing was saved',
-                testResult,
-            });
-        }
-        res.status(201).json({ connection, testResult });
+        // Use the Graph service which creates BOTH the FalkorDbConnection AND the Graph record
+        const graph = await createBYODBGraph({
+            workspaceId,
+            name: req.body.name,
+            host: req.body.host,
+            port: req.body.port,
+            username: req.body.username,
+            password: req.body.password,
+            graphName: req.body.graphName,
+            tlsEnabled: req.body.tlsEnabled ?? false,
+            caCertificate: req.body.caCertificate,
+            deploymentType: req.body.deploymentType ?? 'cloud',
+            userId: customerId,
+        });
+
+        const testResult = {
+            success: true,
+            steps: ['Graph record created', 'FalkorDB connection created'],
+            message: 'BYODB graph created successfully',
+        };
+
+        res.status(201).json({ graph, testResult });
     } catch (error) {
-        handleError(res, error, 'Failed to create connection');
+        if (error instanceof Error && error.message === 'GRAPH_LIMIT_REACHED: Workspace already has a BYODB graph') {
+            return void res.status(409).json({ error: 'BYODB_LIMIT_REACHED: workspace already has a BYODB graph' });
+        }
+        handleError(res, error, 'Failed to create BYODB graph');
     }
 });
 
@@ -161,7 +225,7 @@ falkorDbConnectionsRouter.patch('/:id', requireAuth, async (req: AuthenticatedRe
 });
 
 /**
- * Delete a connection and purge its secrets.
+ * Delete a connection and purge its secrets. Also deletes the associated Graph record.
  */
 falkorDbConnectionsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -169,7 +233,36 @@ falkorDbConnectionsRouter.delete('/:id', requireAuth, async (req: AuthenticatedR
         const customerId = await resolveCustomerId(claims);
         if (!customerId) return void res.status(401).json({ error: 'User not found' });
 
+        // First, find the Graph record associated with this connection
+        const graph = await prisma.graph.findFirst({
+            where: { falkorDbConnectionId: String(req.params.id), deletedAt: null },
+        });
+
+        // Delete the FalkorDB connection (which also purges secrets)
         await deleteConnection(customerId, String(req.params.id));
+
+        // If there's an associated Graph record, soft-delete it
+        if (graph) {
+            await prisma.graph.update({
+                where: { id: graph.id },
+                data: {
+                    status: 'DELETED',
+                    deletedAt: new Date(),
+                },
+            });
+
+            // Clear workspace's activeGraphId if it points to this graph
+            const workspace = await prisma.workspace.findUnique({
+                where: { id: graph.workspaceId },
+            });
+            if (workspace?.activeGraphId === graph.id) {
+                await prisma.workspace.update({
+                    where: { id: graph.workspaceId },
+                    data: { activeGraphId: null },
+                });
+            }
+        }
+
         res.json({ success: true });
     } catch (error) {
         if (error instanceof FalkorDbInputError && error.message === 'Connection not found') {

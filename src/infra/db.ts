@@ -26,7 +26,13 @@ setDefaultAutoSelectFamily(false);
 const connectionString = config.databaseUrl;
 // connectionTimeoutMillis: fail fast on a hung TCP connect so withDbRetry's
 // attempts fit within a user's patience instead of one 20s+ OS-level stall.
-const pool = new Pool({ connectionString, connectionTimeoutMillis: config.dbConnectTimeoutMs });
+// Prisma Postgres pooled connections (PgBouncer) require sslmode=require and
+// rejectUnauthorized: false because the cert is for *.prisma.io, not pooled.db.prisma.io.
+const pool = new Pool({
+    connectionString,
+    connectionTimeoutMillis: config.dbConnectTimeoutMs,
+    ssl: { rejectUnauthorized: false },
+});
 const adapter = new PrismaPg(pool);
 
 /**

@@ -200,9 +200,9 @@ model Secret {
 // ============================================================================
 
 model Workspace {
-  id              String            @id @db.VarChar(255)
+  id              String            @id @default(uuid()) @db.Uuid
   name            String            @db.VarChar(255)
-  activeGraphId   String?           @map("active_graph_id") @db.VarChar(255)
+  activeGraphId   String?           @map("active_graph_id") @db.Uuid
   settings        Json?             @default("{}")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
@@ -220,7 +220,7 @@ model Workspace {
 model WorkspaceMember {
   id           String    @id @default(uuid()) @db.Uuid
   userId       String    @map("user_id") @db.Uuid
-  workspaceId  String    @map("workspace_id") @db.VarChar(255)
+  workspaceId  String    @map("workspace_id") @db.Uuid
   role         String    @db.VarChar(20) // 'ADMIN' | 'MEMBER'
   joinedAt     DateTime  @default(now()) @map("joined_at")
   invitedBy    String?   @map("invited_by") @db.Uuid
@@ -238,8 +238,8 @@ model WorkspaceMember {
 }
 
 model Graph {
-  id                    String      @id @db.VarChar(255)
-  workspaceId           String      @map("workspace_id") @db.VarChar(255)
+  id                    String      @id @default(uuid()) @db.Uuid
+  workspaceId           String      @map("workspace_id") @db.Uuid
   name                  String      @db.VarChar(255)
   type                  String      @db.VarChar(20) // 'CONFUSE' | 'BYODB'
   status                String      @default("ACTIVE") @db.VarChar(20) // 'ACTIVE' | 'PROVISIONING' | 'FAILED' | 'DELETED'
@@ -263,10 +263,10 @@ model Graph {
 model AuditLog {
   id           String   @id @default(uuid()) @db.Uuid
   userId       String?  @map("user_id") @db.Uuid
-  workspaceId  String?  @map("workspace_id") @db.VarChar(255)
+  workspaceId  String?  @map("workspace_id") @db.Uuid
   action       String   @db.VarChar(100)
   entityType   String   @map("entity_type") @db.VarChar(50)
-  entityId     String?  @map("entity_id") @db.VarChar(255)
+  entityId     String?  @map("entity_id") @db.Uuid
   metadata     Json?
   ipAddress    String?  @map("ip_address") @db.VarChar(50)
   userAgent    String?  @map("user_agent") @db.VarChar(500)
@@ -282,7 +282,7 @@ model AuditLog {
 model PendingInvitation {
   id          String    @id @default(uuid()) @db.Uuid
   email       String    @db.VarChar(255)
-  workspaceId String    @map("workspace_id") @db.VarChar(255)
+  workspaceId String    @map("workspace_id") @db.Uuid
   invitedBy   String    @map("invited_by") @db.Uuid
   token       String    @unique @db.VarChar(255)
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -298,7 +298,7 @@ model PendingInvitation {
 // and are included here for reference only. They are not managed by Prisma migrations.
 model FileMetadata {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  source_id    String    @db.VarChar(255)
+  source_id    String    @db.Uuid
   filename     String    @db.VarChar(255)
   file_type    String    @db.VarChar(50)
   language     String?   @db.VarChar(50)
@@ -314,7 +314,7 @@ model FileMetadata {
 
 model ChunkSnapshot {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  source_id       String    @db.VarChar(255)
+  source_id       String    @db.Uuid
   filename        String    @db.VarChar(255)
   start_byte      BigInt    @db.BigInt
   end_byte        BigInt    @db.BigInt

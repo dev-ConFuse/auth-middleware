@@ -10,7 +10,7 @@
  * `.secret.env` (secrets → AKS Secret) → `.env.local` (developer overrides).
  */
 
-import dotenv from 'dotenv';
+import { config as dotenvConfig } from 'dotenv';
 import path from 'path';
 
 interface Auth0Config {
@@ -30,11 +30,11 @@ interface Auth0Config {
 }
 
 // Load .map.env first, then .secret.env (with override), then .env.local
-dotenv.config({ path: path.resolve(process.cwd(), '.map.env') });
+dotenvConfig({ path: path.resolve(process.cwd(), '.map.env') });
 // .secret.env overrides defaults (override: true ensures secrets win over .map.env)
-dotenv.config({ path: path.resolve(process.cwd(), '.secret.env'), override: true });
+dotenvConfig({ path: path.resolve(process.cwd(), '.secret.env'), override: true });
 // .env.local allows local developer overrides on top of everything
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
+dotenvConfig({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 interface OAuthProviderConfig {
     clientId?: string;

@@ -13,9 +13,7 @@
 
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const helmet = require('helmet');
+import helmet from 'helmet';
 import { config } from './config.js';
 import authRouter from './auth.js';
 import { healthRouter, userRouter } from './routes/index.js';

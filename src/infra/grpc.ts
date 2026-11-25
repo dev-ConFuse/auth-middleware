@@ -26,15 +26,21 @@ const __dirname = path.dirname(__filename);
 
 const PROTO_PATH = path.join(__dirname, '../../proto/auth.proto');
 
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-    keepCase: true,
-    longs: String,
-    enums: String,
-    defaults: true,
-    oneofs: true,
-});
-
-const authProto = grpc.loadPackageDefinition(packageDefinition) as any;
+// Lazy-load proto definition to avoid module-load-time crashes
+let authProto: any = null;
+function getAuthProto(): any {
+    if (!authProto) {
+        const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+            keepCase: true,
+            longs: String,
+            enums: String,
+            defaults: true,
+            oneofs: true,
+        });
+        authProto = grpc.loadPackageDefinition(packageDefinition);
+    }
+    return authProto;
+}
 
 /**
  * ValidateToken — verify a user JWT (Auth0) and return the user's identity:
@@ -241,7 +247,7 @@ const getUser = async (call: any, callback: any) => {
 export const startGrpcServer = () => {
     const server = new grpc.Server();
 
-    server.addService(authProto.confuse.auth.v1.Auth.service, {
+    server.addService(getAuthProto().confuse.auth.v1.Auth.service, {
         ValidateToken: validateToken,
         ValidateApiKey: validateApiKey,
         GetInternalToken: getInternalToken,

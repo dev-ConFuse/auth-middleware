@@ -15,13 +15,13 @@ import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
 import { AsyncLocalStorage } from 'async_hooks';
-import dotenv from 'dotenv';
+import { config as dotenvConfig } from 'dotenv';
 
 // Load env files before reading LOG_LEVEL / LOG_FORMAT (env-policy: .map.env →
 // .secret.env → .env.local; required vars fail fast, never silently defaulted)
-dotenv.config({ path: path.resolve(process.cwd(), '.map.env') });
-dotenv.config({ path: path.resolve(process.cwd(), '.secret.env'), override: true });
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
+dotenvConfig({ path: path.resolve(process.cwd(), '.map.env') });
+dotenvConfig({ path: path.resolve(process.cwd(), '.secret.env'), override: true });
+dotenvConfig({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 const logLevel = process.env.LOG_LEVEL;
 if (!logLevel) {
